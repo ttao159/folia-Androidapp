@@ -222,6 +222,15 @@ OPENAI_API_TEMPERATURE=0.7
 vercel dev
 ```
 
+## Android 构建
+
+本项目是 Folia 的 Android 版本，基于 [Capacitor 8](https://capacitorjs.com/) 将前端打包为原生 Android 应用（appId `top.izuna.foliamajor`）。
+
+- 前端构建产物输出到 `dist/`，由 Capacitor 同步到 `android/` 原生工程。
+- Android 原生工程位于 `android/`，使用 Gradle 构建，入口为 `android/gradlew`。
+- 常用流程：`npm run build` 构建前端 → `npx cap sync android` 同步到原生工程 → 用 Android Studio 打开 `android/` 或直接 `cd android && ./gradlew assembleDebug` 打包。
+- 涉及的原生能力：文件系统（`@capacitor/filesystem`）、屏幕方向（`@capacitor/screen-orientation`）、状态栏（`@capacitor/status-bar`）、应用生命周期（`@capacitor/app`）。
+
 ## 常用脚本
 
 | 命令 | 说明 |
@@ -229,6 +238,7 @@ vercel dev
 | `npm run dev` | 启动 Vite 开发服务器 |
 | `npm run build` | 构建 Web 版本 |
 | `npm run preview` | 预览构建结果 |
+| `npx cap sync android` | 将前端构建产物同步到 Android 原生工程 |
 | `npm run dev:electron` | 启动 Electron 开发模式 |
 | `npm run dev:electron:update-preview` | 启动 Electron 开发模式，并模拟显示版本更新提示 |
 | `npm run dev:electron:wallpaper` | 先构建 `windowtolayer`，再启动 Electron 开发模式（Linux 壁纸模式联调） |
@@ -268,4 +278,5 @@ vercel dev
 - Tailwind CSS 4
 - Framer Motion
 - Electron
+- Capacitor（Android 端打包）
 - i18next

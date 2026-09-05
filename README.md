@@ -31,11 +31,11 @@ Lyrics Reimagined // 辞曲新境
 
 ## 项目简介
 
-Folia是一个以全屏沉浸式歌词播放为核心的在线音乐播放器，支持网易云、酷狗、Navidrome 和本地音乐库，通过智能歌词匹配，AI生成配色主题，以及多种全屏歌词动画为用户提供独特的听歌体验。
+本项目是 Folia 的 **Android 版本**，基于 Capacitor 将 Folia 前端打包为原生 Android 应用（appId `top.izuna.foliamajor`）。
 
-提供基于Electron的 windows/ macOS/ Linux 桌面端版本与基于 Node.js 的 Web 版本，支持多平台部署。
+Folia 是一个以全屏沉浸式歌词播放为核心的在线音乐播放器，支持网易云、酷狗、Navidrome 和本地音乐库，通过智能歌词匹配，AI生成配色主题，以及多种全屏歌词动画为用户提供独特的听歌体验。
 
-如果希望能够在移动设备上使用，或在浏览器上体验，可以选择[一键部署到 Vercel](https://folia-site.cielaniska.top/guide/deploy-vercel) 的 Web 版本，或自行部署到其他支持 Node.js 的平台。
+Android 端基于 Capacitor 构建，前端代码与 Web/桌面端共享，通过 `android/` 目录下的 Gradle 工程打包分发，支持移动设备上的完整歌词播放体验。
 
 ## 展示
 
