@@ -201,6 +201,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         pendoloTuning,
         sonnetTuning,
         temperaTuning,
+        fusionTuning,
         cappellaCustomEmojiImages,
         isLoadingCappellaCustomEmojiPack,
         cappellaCustomAvatarImages,
@@ -280,6 +281,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         handleResetSonnetTuning: onResetSonnetTuning,
         handleSetTemperaTuning: onTemperaTuningChange,
         handleResetTemperaTuning: onResetTemperaTuning,
+        handleSetFusionTuning: onFusionTuningChange,
+        handleResetFusionTuning: onResetFusionTuning,
         handleUploadMonetBackgroundImage: onUploadMonetBackgroundImage,
         handleClearMonetBackgroundImage: onClearMonetBackgroundImage,
         handleUploadMonetPortraitImage: onUploadMonetPortraitImage,
@@ -1873,6 +1876,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         pendoloTuning={pendoloTuning}
                         sonnetTuning={sonnetTuning}
                         temperaTuning={temperaTuning}
+                        fusionTuning={fusionTuning}
                         cappellaCustomEmojiImages={cappellaCustomEmojiImages}
                         cappellaCustomAvatarImages={cappellaCustomAvatarImages}
                         monetPortraitImage={monetPortraitImage}
@@ -1931,6 +1935,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         onResetSonnetTuning={onResetSonnetTuning}
                         onTemperaTuningChange={onTemperaTuningChange}
                         onResetTemperaTuning={onResetTemperaTuning}
+                        onFusionTuningChange={onFusionTuningChange}
+                        onResetFusionTuning={onResetFusionTuning}
                         onUploadMonetPortraitImage={onUploadMonetPortraitImage}
                         onClearMonetPortraitImage={onClearMonetPortraitImage}
                         isLoadingMonetPortraitImage={isLoadingMonetPortraitImage}
@@ -1963,6 +1969,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                             pendolo: pendoloTuning,
                             sonnet: sonnetTuning,
                             tempera: temperaTuning,
+                            fusion: fusionTuning,
                         }}
                         staticMode={staticMode}
                         visualizerOpacity={visualizerOpacity}

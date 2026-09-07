@@ -227,7 +227,18 @@ export class FusionPixiRuntime {
             const charWidth = glyph.isSpace ? fontSize * 0.3 : measureText(glyph.char, fontSpec, fontSize);
             return { glyph, fontSize, charWidth };
         });
-        const totalWidth = specs.reduce((sum, s) => sum + s.charWidth, 0);
+        let totalWidth = specs.reduce((sum, s) => sum + s.charWidth, 0);
+
+        // 单行排版时按可用宽度整体收缩，避免长句两端被裁到屏幕外（手机竖屏尤其明显）。
+        const availableWidth = width * 0.94;
+        const fitScale = totalWidth > availableWidth && totalWidth > 0 ? availableWidth / totalWidth : 1;
+        if (fitScale !== 1) {
+            for (const spec of specs) {
+                spec.fontSize *= fitScale;
+                spec.charWidth *= fitScale;
+            }
+            totalWidth *= fitScale;
+        }
         const cy = height * 0.5;
         let cursorX = -totalWidth / 2;
 
@@ -301,7 +312,7 @@ export class FusionPixiRuntime {
                 const deco = new Text({ text: ds.text, style: decoStyle });
                 deco.anchor.set(0.5);
                 deco.alpha = ds.alpha;
-                deco.scale.set(ds.scale);
+                deco.scale.set(ds.scale * fitScale);
                 deco.rotation = ds.rot;
                 deco.position.set(width * (0.5 + ds.dx), height * (0.5 + ds.dy));
                 this.textLayer.addChildAt(deco, 0);
