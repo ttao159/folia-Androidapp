@@ -64,33 +64,31 @@ describe('fusion entrance params', () => {
     });
 
     it('stays inside the visible band so hero lines never fly off-screen', () => {
-        // mag * fontSize 是最大位移；字号上限 112px（对齐商籁），位移需小于半屏高（竖屏 ~320px）。
-        const maxOffset = 0.43 * 112;
+        // mag * fontSize 是最大位移；字号上限 80px，位移需小于半屏高（竖屏 ~320px）。
+        const maxOffset = 0.43 * 80;
         expect(maxOffset).toBeLessThan(320);
     });
 });
 
-describe('fusion adaptive font size (sonnet-aligned)', () => {
-    // 与 createFusionPixiRuntime.rebuildText 中 baseFontSize 公式保持一致的纯函数校验。
-    const baseFontSize = (width: number, wordCount: number) => Math.min(Math.max(width / Math.max(7, Math.max(1, wordCount) * 2.15), 24), 112);
+describe('fusion adaptive font size (mobile-optimized)', () => {
+    const baseFontSize = (width: number, wordCount: number) => Math.min(Math.max(width / Math.max(9, Math.max(1, wordCount) * 3.5), 22), 80);
 
     it('shrinks long sentences on narrow phone screens', () => {
         const short = baseFontSize(393, 3);
         const long = baseFontSize(393, 12);
         expect(long).toBeLessThan(short);
-        expect(long).toBeGreaterThanOrEqual(24);
+        expect(long).toBeGreaterThanOrEqual(22);
     });
 
-    it('caps at sonnet-level maximum instead of oversized posters', () => {
-        expect(baseFontSize(1920, 1)).toBeLessThanOrEqual(112);
+    it('caps at 80px to avoid oversized text on mobile', () => {
+        expect(baseFontSize(1920, 1)).toBeLessThanOrEqual(80);
     });
 
     it('keeps hero contrast driven only by heroScale (no double scaling)', () => {
-        // deco 字号 = base * heroMul，且 deco.scale 不再乘 heroMul；heroMul 范围 1~2。
         const heroMul = 1.62;
         const heroFontSize = baseFontSize(393, 6) * heroMul;
         expect(heroFontSize).toBeGreaterThan(baseFontSize(393, 6));
-        expect(heroFontSize).toBeLessThanOrEqual(112 * 2);
+        expect(heroFontSize).toBeLessThanOrEqual(80 * 2);
     });
 });
 

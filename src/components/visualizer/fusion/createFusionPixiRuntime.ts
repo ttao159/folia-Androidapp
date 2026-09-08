@@ -218,7 +218,12 @@ export class FusionPixiRuntime {
     }
 
     private rebuildText(width: number, height: number) {
-        // 旧行文本移入淡出层继续显示，由 fadeOutPreviousLine 按时间退场。
+        // 若上一行淡出层仍在显示，先行销毁，避免多层重叠。
+        if (this.prevTextLayer) {
+            this.prevTextLayer.destroy({ children: true });
+            this.prevTextLayer = null;
+        }
+        // 当前行文本移入淡出层继续显示，由 fadeOutPreviousLine 按时间退场。
         if (this.textLayer.children.length > 0 && !this.options.staticMode) {
             this.prevFadeStart = this.options.currentTime.get();
             this.app.stage.addChild(this.textLayer);
@@ -234,9 +239,9 @@ export class FusionPixiRuntime {
         const { Text, TextStyle, Container } = this.pixi;
         const shot = this.shots[this.activeLineIndex];
         const { theme } = this.options;
-        // 字号参考商籁：按词数自适应收缩，避免手机上整行歌词过大。
+        // 字号按词数自适应收缩，手机竖屏短句避免溢出（上限 80px）。
         const wordCount = Math.max(1, shot.wordCount);
-        const baseFontSize = Math.min(Math.max(width / Math.max(7, wordCount * 2.15), 24), 112) * this.options.lyricsFontScale;
+        const baseFontSize = Math.min(Math.max(width / Math.max(9, wordCount * 3.5), 22), 80) * this.options.lyricsFontScale;
         const fontFamily = theme.fontFamily || 'sans-serif';
 
         // 先计算每个字素的字号与宽度，再水平居中排版。hero 词的放大统一交给 heroScale，
@@ -272,8 +277,10 @@ export class FusionPixiRuntime {
         const heroFontSize = baseFontSize * heroMul;
         const heroWordIndex = shot.heroIndex >= 0 ? shot.heroIndex : -1;
         const heroText = wordByIndex.get(heroWordIndex) ?? '';
-        // 主体大字与小字基线对齐，使整组文字垂直居中于可视区。
-        const cy = height * 0.5;
+        // 垂直居中但保留安全边距，避免状态栏/导航栏遮挡（至少8%边距）。
+        const safeMarginY = Math.max(30, height * 0.08);
+        const availableHeight = height - safeMarginY * 2;
+        const cy = safeMarginY + availableHeight * 0.5;
 
         const bodyColor = theme.primaryColor;
         const accentColor = theme.accentColor;
