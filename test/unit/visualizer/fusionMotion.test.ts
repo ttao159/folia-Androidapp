@@ -64,9 +64,57 @@ describe('fusion entrance params', () => {
     });
 
     it('stays inside the visible band so hero lines never fly off-screen', () => {
-        // mag * fontSize 是最大位移；fontSize 上限约 92px，位移需小于半屏高（竖屏 ~320px）。
-        const maxOffset = 0.43 * 92;
+        // mag * fontSize 是最大位移；字号上限 112px（对齐商籁），位移需小于半屏高（竖屏 ~320px）。
+        const maxOffset = 0.43 * 112;
         expect(maxOffset).toBeLessThan(320);
+    });
+});
+
+describe('fusion adaptive font size (sonnet-aligned)', () => {
+    // 与 createFusionPixiRuntime.rebuildText 中 baseFontSize 公式保持一致的纯函数校验。
+    const baseFontSize = (width: number, wordCount: number) => Math.min(Math.max(width / Math.max(7, Math.max(1, wordCount) * 2.15), 24), 112);
+
+    it('shrinks long sentences on narrow phone screens', () => {
+        const short = baseFontSize(393, 3);
+        const long = baseFontSize(393, 12);
+        expect(long).toBeLessThan(short);
+        expect(long).toBeGreaterThanOrEqual(24);
+    });
+
+    it('caps at sonnet-level maximum instead of oversized posters', () => {
+        expect(baseFontSize(1920, 1)).toBeLessThanOrEqual(112);
+    });
+
+    it('keeps hero contrast driven only by heroScale (no double scaling)', () => {
+        // deco 字号 = base * heroMul，且 deco.scale 不再乘 heroMul；heroMul 范围 1~2。
+        const heroMul = 1.62;
+        const heroFontSize = baseFontSize(393, 6) * heroMul;
+        expect(heroFontSize).toBeGreaterThan(baseFontSize(393, 6));
+        expect(heroFontSize).toBeLessThanOrEqual(112 * 2);
+    });
+});
+
+describe('fusion line transition fade', () => {
+    // 与 fadeOutPreviousLine 一致：淡出期内 alpha 从 1 单调降到 0。
+    const prevAlpha = (elapsed: number) => {
+        const p = elapsed / 0.6;
+        if (p >= 1) return null;
+        return Math.max(0, 1 - easeInOut(Math.max(0, p)));
+    };
+
+    it('fades previous line out monotonically within half a second', () => {
+        let prev = 1.01;
+        for (let t = 0; t < 0.6; t += 0.05) {
+            const a = prevAlpha(t)!;
+            expect(a).toBeLessThanOrEqual(prev + 1e-9);
+            prev = a;
+        }
+        expect(prevAlpha(0.6)).toBeNull();
+    });
+
+    it('starts fully opaque and ends transparent', () => {
+        expect(prevAlpha(0)).toBeCloseTo(1, 5);
+        expect(prevAlpha(0.59)).toBeLessThan(0.05);
     });
 });
 
