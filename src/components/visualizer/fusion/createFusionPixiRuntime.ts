@@ -239,8 +239,27 @@ export class FusionPixiRuntime {
             }
             totalWidth *= fitScale;
         }
+        // 主体大字（hero 词）字号与占宽：与小字同基线排版，整行按可用宽度让位收缩。
+        const wordByIndex = new Map<number, string>();
+        shot.glyphs.forEach(g => {
+            if (g.isSpace || g.wordIndex < 0) return;
+            const existing = wordByIndex.get(g.wordIndex) ?? '';
+            wordByIndex.set(g.wordIndex, existing + g.char);
+        });
+        const heroFontSize = baseFontSize * 1.62;
+        const heroWordIndex = shot.heroIndex >= 0 ? shot.heroIndex : -1;
+        const heroText = wordByIndex.get(heroWordIndex) ?? '';
+        let heroWidth = 0;
+        if (heroText) {
+            try {
+                const layout = layoutWithLines(prepareWithSegments(heroText, `700 ${heroFontSize}px ${fontFamily}`), 99999, heroFontSize * 1.2);
+                heroWidth = layout.lines[0]?.width ?? heroText.length * heroFontSize * 0.6;
+            } catch {
+                heroWidth = heroText.length * heroFontSize * 0.6;
+            }
+        }
+        // 主体大字与小字基线对齐，使整组文字垂直居中于可视区。
         const cy = height * 0.5;
-        let cursorX = -totalWidth / 2;
 
         const bodyColor = theme.primaryColor;
         const accentColor = theme.accentColor;
@@ -249,17 +268,32 @@ export class FusionPixiRuntime {
             fontWeight: '600',
             fill: accentColor,
         });
+        // 装饰字样式：以 hero 词为“主体大字”，字号直接取整行最大可用字号。
         const decoStyle = new TextStyle({
             fontFamily,
             fontWeight: '700',
-            fill: accentColor,
+            fontSize: heroFontSize,
+            fill: theme.primaryColor,
         });
 
+        // 小字字号：按主体大字实际占宽排版，让整行（含主体大字）恰好铺满可用宽度。
+        let heroSmallBase = 0;
+        specs.forEach(({ glyph, charWidth }) => {
+            if (!glyph.isSpace && glyph.wordIndex === heroWordIndex) heroSmallBase += charWidth;
+        });
+        const heroMul = this.options.tuning.heroScale ?? 1;
+        const heroOccupyWidth = heroSmallBase * heroMul;
+        const smallMul = Math.min(1, availableWidth / ((totalWidth - heroSmallBase) + heroOccupyWidth));
+
+        // 水平布局：整行（小字 + hero 占宽）以画布中心为锚点居中；hero 词只占位不逐字绘制。
+        const rowWidth = (totalWidth - heroSmallBase) * smallMul + heroOccupyWidth;
+        let cursorX = width * 0.5 - rowWidth / 2;
+        const heroCenterX = cursorX + (totalWidth - heroSmallBase) * smallMul + heroOccupyWidth / 2;
         specs.forEach(({ glyph, fontSize, charWidth }) => {
             const style = new TextStyle({
                 fontFamily,
                 fontWeight: '600',
-                fontSize,
+                fontSize: fontSize * smallMul,
                 fill: bodyColor,
             });
             const display = new Text({ text: glyph.char, style });
@@ -269,8 +303,15 @@ export class FusionPixiRuntime {
             echo.alpha = 0;
 
             const wrapper = new Container();
-            const baseX = cursorX + charWidth / 2;
-            cursorX += charWidth;
+            const scaledCharWidth = charWidth * smallMul;
+            const isHeroWord = glyph.wordIndex === heroWordIndex;
+            const baseX = cursorX + scaledCharWidth / 2;
+            cursorX += scaledCharWidth;
+            if (isHeroWord) {
+                // hero 词由主体大字统一绘制，逐字元素隐藏但仍保留入场动画节奏。
+                display.visible = false;
+                echo.visible = false;
+            }
             wrapper.position.set(baseX, cy);
             wrapper.addChild(echo, display);
             this.textLayer.addChild(wrapper);
@@ -284,40 +325,20 @@ export class FusionPixiRuntime {
                 blurFilter,
                 baseX,
                 baseY: cy,
-                fontSize,
+                fontSize: fontSize * smallMul,
                 glyph,
             });
         });
 
-        // 商籁式装饰字：hero 词 + 句末词的超大淡色副本，带景深。
-        if (this.options.tuning.showDecor && shot.wordCount > 0) {
-            const wordList: string[] = [];
-            const wordByIndex = new Map<number, string>();
-            shot.glyphs.forEach(g => {
-                if (g.isSpace || g.wordIndex < 0) return;
-                const existing = wordByIndex.get(g.wordIndex) ?? '';
-                wordByIndex.set(g.wordIndex, existing + g.char);
-            });
-            wordByIndex.forEach(text => wordList.push(text));
-            const heroText = shot.heroIndex >= 0 ? (wordList[shot.heroIndex] ?? '') : '';
-            const lastText = wordList.length > 0 ? wordList[wordList.length - 1] : '';
-            const decoSpecs: { text: string; scale: number; dx: number; dy: number; rot: number; alpha: number }[] = [];
-            if (heroText) {
-                decoSpecs.push({ text: heroText, scale: 2.7, dx: -0.34, dy: -0.22, rot: -0.12, alpha: 0.15 });
-            }
-            if (lastText && lastText !== heroText) {
-                decoSpecs.push({ text: lastText, scale: 2.0, dx: 0.32, dy: 0.24, rot: 0.07, alpha: 0.1 });
-            }
-            decoSpecs.forEach(ds => {
-                const deco = new Text({ text: ds.text, style: decoStyle });
-                deco.anchor.set(0.5);
-                deco.alpha = ds.alpha;
-                deco.scale.set(ds.scale * fitScale);
-                deco.rotation = ds.rot;
-                deco.position.set(width * (0.5 + ds.dx), height * (0.5 + ds.dy));
-                this.textLayer.addChildAt(deco, 0);
-                this.decoViews.push(deco);
-            });
+        // 主体大字 = hero 词（放大字），与小字同处一条基线、占同一块中心区域。
+        if (this.options.tuning.showDecor && shot.wordCount > 0 && heroText) {
+            const deco = new Text({ text: heroText, style: decoStyle });
+            deco.anchor.set(0.5);
+            // heroScale（1~2）放大字号；小字已按实际占宽让位，无需再收缩。
+            deco.scale.set(heroMul);
+            deco.position.set(heroCenterX, cy);
+            this.textLayer.addChildAt(deco, 0);
+            this.decoViews.push(deco);
         }
 
         this.drawRules(width, height);

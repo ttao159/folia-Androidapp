@@ -31,6 +31,15 @@ Entries discovered by the Agent during task execution should follow this format:
 
 ## Entries
 
+[禁止无意义重复读取循环]
+- Date: 2026-09-07
+- Context: 用户在交融歌词布局调试过程中指出模型反复执行相同 grep/read 命令而不推进改动
+- Instructions:
+  - 当陷入无意义的重复读取（连续多次对同一文件/区域执行相同的 grep、sed、read 确认命令）时，必须立刻停止扫描动作。
+  - 停止后先查明原因：区分「确实需要重新确认状态」与「在已掌握信息时仍反复验证」。若属于后者，直接基于已知信息动手编辑代码。
+  - 每次只读取完成下一步改动所必需的最小范围；改动前一次性把相关上下文读全，改完用类型检查或测试验证，而不是靠反复重读来"确认自己没记错"。
+  - 若发现自己第三次读取同一段内容仍未推进任务，应判定为循环并中断，转为实际编辑或向用户报告阻塞点。
+
 [Android APK 构建环境]
 - Date: 2026-09-05
 - Context: Discovered by Agent while building the Android APK

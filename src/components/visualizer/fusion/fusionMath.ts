@@ -57,7 +57,7 @@ export const wordEnterParams = (seed: number, index: number): FusionEnterParams 
     } else {
         stamp = true;
     }
-    const mag = 0.7 + rnd(seed, 6) * 0.5;
+    const mag = 0.25 + rnd(seed, 6) * 0.18;
     return { dirX, dirY, rot, stamp, mag };
 };
 
