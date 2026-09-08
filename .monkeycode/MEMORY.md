@@ -31,6 +31,13 @@ Entries discovered by the Agent during task execution should follow this format:
 
 ## Entries
 
+[改动后必须提交并测试验证]
+- Date: 2026-09-08
+- Context: 用户明确提出的开发工作流要求
+- Instructions:
+  - 每次代码改动完成后，必须创建一个对应的 Git commit，便于后续追踪和回滚。
+  - 每次改动后，必须编写或更新相关测试，并在交付给用户前确保所有测试和验证全部通过。
+
 [禁止无意义重复读取循环]
 - Date: 2026-09-07
 - Context: 用户在交融歌词布局调试过程中指出模型反复执行相同 grep/read 命令而不推进改动
