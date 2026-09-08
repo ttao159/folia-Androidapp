@@ -392,9 +392,10 @@ export class FusionPixiRuntime {
         if (activeIndex !== this.activeLineIndex) {
             this.activeLineIndex = activeIndex;
             this.drawRules(width, height);
-            this.drawHalos(width, height, time);
             this.rebuildText(width, height);
         }
+        // 背景光晕随播放时间呼吸旋转；静态模式仅按行索引取固定构图。
+        this.drawHalos(width, height, this.options.staticMode ? this.activeLineIndex * 1.7 : time);
         this.updateGlyphs(time);
     };
 
