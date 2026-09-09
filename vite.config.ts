@@ -215,6 +215,7 @@ export default async function viteConfig(_config: ConfigEnv): Promise<UserConfig
     server: {
       port: 3000,
       host: '0.0.0.0',
+      allowedHosts: ['.monkeycode-ai.online'],
       watch: {
         // Build output and model weights are not sources, and watching them breaks packaging: the
         // watcher opens a handle on every directory it finds, and electron-builder packages by

@@ -17,6 +17,7 @@ import {
     DEFAULT_NOMAND_BACKGROUND_TUNING,
     DEFAULT_PARTITA_TUNING,
     DEFAULT_PENDOLO_TUNING,
+    DEFAULT_FUSION_TUNING,
     DEFAULT_SONNET_TUNING,
     DEFAULT_TEMPERA_TUNING,
     DEFAULT_TILT_TUNING,
@@ -28,6 +29,7 @@ import {
     type ClassicTuning,
     type CladdaghTuning,
     type FumeTuning,
+    type FusionTuning,
     type LatentBackgroundTuning,
     type MonetBackgroundTuning,
     type MonetPortraitImage,
@@ -87,6 +89,7 @@ interface VisPlaygroundProps {
     pendoloTuning?: PendoloTuning;
     sonnetTuning?: SonnetTuning;
     temperaTuning?: TemperaTuning;
+    fusionTuning?: FusionTuning;
     cappellaCustomEmojiImages?: CappellaEmojiImage[];
     cappellaCustomAvatarImages?: CappellaAvatarImage[];
     monetPortraitImage?: MonetPortraitImage | null;
@@ -145,6 +148,8 @@ interface VisPlaygroundProps {
     onResetSonnetTuning?: () => void;
     onTemperaTuningChange?: (patch: Partial<TemperaTuning>) => void;
     onResetTemperaTuning?: () => void;
+    onFusionTuningChange?: (patch: Partial<FusionTuning>) => void;
+    onResetFusionTuning?: () => void;
     onUploadMonetPortraitImage?: (files: File[]) => Promise<{ ok: boolean; error?: string; }>;
     onClearMonetPortraitImage?: () => Promise<void> | void;
     isLoadingMonetPortraitImage?: boolean;
@@ -314,6 +319,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     pendoloTuning = DEFAULT_PENDOLO_TUNING,
     sonnetTuning = DEFAULT_SONNET_TUNING,
     temperaTuning = DEFAULT_TEMPERA_TUNING,
+    fusionTuning = DEFAULT_FUSION_TUNING,
     cappellaCustomEmojiImages = [],
     cappellaCustomAvatarImages = [],
     monetPortraitImage = null,
@@ -372,6 +378,8 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     onResetSonnetTuning,
     onTemperaTuningChange,
     onResetTemperaTuning,
+    onFusionTuningChange,
+    onResetFusionTuning,
     onUploadMonetPortraitImage,
     onClearMonetPortraitImage,
     isLoadingMonetPortraitImage = false,
@@ -431,6 +439,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     const [draftPendoloTuning, setDraftPendoloTuning] = useState<PendoloTuning>(pendoloTuning);
     const [draftSonnetTuning, setDraftSonnetTuning] = useState<SonnetTuning>(sonnetTuning);
     const [draftTemperaTuning, setDraftTemperaTuning] = useState<TemperaTuning>(temperaTuning);
+    const [draftFusionTuning, setDraftFusionTuning] = useState<FusionTuning>(fusionTuning);
     const [activeEditSection, setActiveEditSection] = useState<VisPlaygroundEditSection>(initialEditSection);
     const fontListRef = React.useRef<HTMLDivElement>(null);
     const fontVirtualListRef = useListRef(null);
@@ -533,6 +542,11 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
         ...draftTemperaTuning,
         textureResolution: temperaTuning.textureResolution,
     }), [draftTemperaTuning, temperaTuning.textureResolution]);
+    // Same rationale as Tempera: Fusion's texture resolution reallocates the Pixi surface per drag step.
+    const previewFusionTuning = useMemo<FusionTuning>(() => ({
+        ...draftFusionTuning,
+        textureResolution: fusionTuning.textureResolution,
+    }), [draftFusionTuning, fusionTuning.textureResolution]);
     const draftVisualizerTunings = useMemo(() => ({
         classic: draftClassicTuning,
         cadenza: cadenzaTuning,
@@ -546,6 +560,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
         pendolo: draftPendoloTuning,
         sonnet: draftSonnetTuning,
         tempera: previewTemperaTuning,
+        fusion: previewFusionTuning,
     }), [cadenzaTuning, cappellaTuning, draftClassicTuning, draftDioramaTuning, draftMonetTuning, draftPendoloTuning, draftSonnetTuning, draftTiltTuning, previewTemperaTuning, resolvedCladdaghTuning, resolvedFumeTuning, resolvedPartitaTuning]);
     const currentFontLabel = customFontLabel || customFontFamily || t('options.customFont');
     const fontStyleOptions: PresetOption<Theme['fontStyle'] | 'custom'>[] = useMemo(() => ([
@@ -596,6 +611,7 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
     useEffect(() => { setDraftPendoloTuning(pendoloTuning); }, [pendoloTuning]);
     useEffect(() => { setDraftSonnetTuning(sonnetTuning); }, [sonnetTuning]);
     useEffect(() => { setDraftTemperaTuning(temperaTuning); }, [temperaTuning]);
+    useEffect(() => { setDraftFusionTuning(fusionTuning); }, [fusionTuning]);
     useEffect(() => { setActiveEditSection(initialEditSection); }, [initialEditSection]);
 
     useVisPlaygroundPreviewPlayback({
@@ -656,11 +672,13 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
             resetPendoloTuning: onResetPendoloTuning,
             resetSonnetTuning: onResetSonnetTuning,
             resetTemperaTuning: onResetTemperaTuning,
+            resetFusionTuning: onResetFusionTuning,
             setDraftFumeTuning,
             setDraftCladdaghTuning,
             setDraftPendoloTuning,
             setDraftSonnetTuning,
             setDraftTemperaTuning,
+            setDraftFusionTuning,
         });
     };
 
@@ -1018,6 +1036,16 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
         }
     };
 
+    const handleFusionTuningDraft = (patch: Partial<FusionTuning>) => {
+        const next = { ...draftFusionTuning, ...patch };
+        setDraftFusionTuning(next);
+        if (!isDraggingSlider.current) {
+            onFusionTuningChange?.(patch);
+        } else {
+            pendingCommitRef.current = () => onFusionTuningChange?.(patch);
+        }
+    };
+
     const handleResetSubtitleSettings = () => {
         setDraftSubtitleOverlayOpacity(0.6);
         setDraftSubtitleFontScale(1);
@@ -1283,6 +1311,8 @@ const VisPlayground: React.FC<VisPlaygroundProps> = ({
                         onSonnetTuningChange={handleSonnetTuningDraft}
                         temperaTuning={draftTemperaTuning}
                         onTemperaTuningChange={handleTemperaTuningDraft}
+                        fusionTuning={draftFusionTuning}
+                        onFusionTuningChange={handleFusionTuningDraft}
                         onResetMonetTuning={onResetMonetTuning}
                         monetPortraitImage={monetPortraitImage}
                         onUploadMonetPortraitImage={onUploadMonetPortraitImage}

@@ -74,6 +74,9 @@ export class FusionPixiRuntime {
 
     private glyphViews: FusionGlyphView[] = [];
     private decoViews: PixiText[] = [];
+    // 上一行文本容器：跨行时保留做淡出，实现转场（参考商籁的段落入场退场）。
+    private prevTextLayer: PixiContainer | null = null;
+    private prevFadeStart = Number.NEGATIVE_INFINITY;
 
     private constructor(
         private readonly pixi: PixiModule,
@@ -142,6 +145,11 @@ export class FusionPixiRuntime {
         this.app.renderer.resize(width, height);
         this.drawPaper(width, height);
         this.drawRules(width, height);
+        // 尺寸变化后旧淡出层坐标失效，直接销毁。
+        if (this.prevTextLayer) {
+            this.prevTextLayer.destroy({ children: true });
+            this.prevTextLayer = null;
+        }
         this.activeLineIndex = -1;
         this.rebuildText(width, height);
         return true;
@@ -210,26 +218,69 @@ export class FusionPixiRuntime {
     }
 
     private rebuildText(width: number, height: number) {
-        this.textLayer.removeChildren().forEach(child => child.destroy());
+        // 若上一行淡出层仍在显示，先行销毁，避免多层重叠。
+        if (this.prevTextLayer) {
+            this.prevTextLayer.destroy({ children: true });
+            this.prevTextLayer = null;
+        }
+        // 当前行文本移入淡出层继续显示，由 fadeOutPreviousLine 按时间退场。
+        if (this.textLayer.children.length > 0 && !this.options.staticMode) {
+            this.prevFadeStart = this.options.currentTime.get();
+            this.app.stage.addChild(this.textLayer);
+            this.prevTextLayer = this.textLayer;
+        } else {
+            this.textLayer.removeChildren().forEach(child => child.destroy());
+        }
+        this.textLayer = new this.pixi.Container();
+        this.app.stage.addChild(this.textLayer);
         this.glyphViews = [];
         this.decoViews = [];
         if (this.activeLineIndex < 0 || this.activeLineIndex >= this.shots.length) return;
         const { Text, TextStyle, Container } = this.pixi;
         const shot = this.shots[this.activeLineIndex];
         const { theme } = this.options;
-        const baseFontSize = Math.min(Math.max(width * 0.084, 40), 92) * this.options.lyricsFontScale;
+        // 字号按词数自适应收缩，手机竖屏短句避免溢出（上限 80px）。
+        const wordCount = Math.max(1, shot.wordCount);
+        const baseFontSize = Math.min(Math.max(width / Math.max(9, wordCount * 3.5), 22), 80) * this.options.lyricsFontScale;
         const fontFamily = theme.fontFamily || 'sans-serif';
 
-        // 先计算每个字素的字号与宽度，再水平居中排版。
+        // 先计算每个字素的字号与宽度，再水平居中排版。hero 词的放大统一交给 heroScale，
+        // 此处按普通字素测宽，避免与 deco 的 scale 叠加成双倍放大。
         const specs = shot.glyphs.map(glyph => {
-            const fontSize = baseFontSize * glyph.scale;
+            // hero 词的放大统一交给 heroScale，此处按普通字素测宽避免双倍放大。
+            const fontSize = baseFontSize * (glyph.wordIndex === shot.heroIndex ? 1 : glyph.scale);
             const fontSpec = `600 ${fontSize}px ${fontFamily}`;
             const charWidth = glyph.isSpace ? fontSize * 0.3 : measureText(glyph.char, fontSpec, fontSize);
             return { glyph, fontSize, charWidth };
         });
-        const totalWidth = specs.reduce((sum, s) => sum + s.charWidth, 0);
-        const cy = height * 0.5;
-        let cursorX = -totalWidth / 2;
+        let totalWidth = specs.reduce((sum, s) => sum + s.charWidth, 0);
+
+        // 单行排版时按可用宽度整体收缩，避免长句两端被裁到屏幕外（手机竖屏尤其明显）。
+        const availableWidth = width * 0.94;
+        const fitScale = totalWidth > availableWidth && totalWidth > 0 ? availableWidth / totalWidth : 1;
+        if (fitScale !== 1) {
+            for (const spec of specs) {
+                spec.fontSize *= fitScale;
+                spec.charWidth *= fitScale;
+            }
+            totalWidth *= fitScale;
+        }
+        // 主体大字（hero 词）字号与占宽：与小字同基线排版，整行按可用宽度让位收缩。
+        const wordByIndex = new Map<number, string>();
+        shot.glyphs.forEach(g => {
+            if (g.isSpace || g.wordIndex < 0) return;
+            const existing = wordByIndex.get(g.wordIndex) ?? '';
+            wordByIndex.set(g.wordIndex, existing + g.char);
+        });
+        // 主体大字字号跟随自适应后的 base，再乘 heroScale 对比系数（1~2）。
+        const heroMul = this.options.tuning.heroScale ?? 1;
+        const heroFontSize = baseFontSize * heroMul;
+        const heroWordIndex = shot.heroIndex >= 0 ? shot.heroIndex : -1;
+        const heroText = wordByIndex.get(heroWordIndex) ?? '';
+        // 垂直居中但保留安全边距，避免状态栏/导航栏遮挡（至少8%边距）。
+        const safeMarginY = Math.max(30, height * 0.08);
+        const availableHeight = height - safeMarginY * 2;
+        const cy = safeMarginY + availableHeight * 0.5;
 
         const bodyColor = theme.primaryColor;
         const accentColor = theme.accentColor;
@@ -238,17 +289,31 @@ export class FusionPixiRuntime {
             fontWeight: '600',
             fill: accentColor,
         });
+        // 装饰字样式：以 hero 词为“主体大字”，字号直接取整行最大可用字号。
         const decoStyle = new TextStyle({
             fontFamily,
             fontWeight: '700',
-            fill: accentColor,
+            fontSize: heroFontSize,
+            fill: theme.primaryColor,
         });
 
+        // 小字字号：按主体大字实际占宽排版，让整行（含主体大字）恰好铺满可用宽度。
+        let heroSmallBase = 0;
+        specs.forEach(({ glyph, charWidth }) => {
+            if (!glyph.isSpace && glyph.wordIndex === heroWordIndex) heroSmallBase += charWidth;
+        });
+        const heroOccupyWidth = heroSmallBase * heroMul;
+        const smallMul = Math.min(1, availableWidth / ((totalWidth - heroSmallBase) + heroOccupyWidth));
+
+        // 水平布局：整行（小字 + hero 占宽）以画布中心为锚点居中；hero 词只占位不逐字绘制。
+        const rowWidth = (totalWidth - heroSmallBase) * smallMul + heroOccupyWidth;
+        let cursorX = width * 0.5 - rowWidth / 2;
+        const heroCenterX = cursorX + (totalWidth - heroSmallBase) * smallMul + heroOccupyWidth / 2;
         specs.forEach(({ glyph, fontSize, charWidth }) => {
             const style = new TextStyle({
                 fontFamily,
                 fontWeight: '600',
-                fontSize,
+                fontSize: fontSize * smallMul,
                 fill: bodyColor,
             });
             const display = new Text({ text: glyph.char, style });
@@ -258,8 +323,15 @@ export class FusionPixiRuntime {
             echo.alpha = 0;
 
             const wrapper = new Container();
-            const baseX = cursorX + charWidth / 2;
-            cursorX += charWidth;
+            const scaledCharWidth = charWidth * smallMul;
+            const isHeroWord = glyph.wordIndex === heroWordIndex;
+            const baseX = cursorX + scaledCharWidth / 2;
+            cursorX += scaledCharWidth;
+            if (isHeroWord) {
+                // hero 词由主体大字统一绘制，逐字元素隐藏但仍保留入场动画节奏。
+                display.visible = false;
+                echo.visible = false;
+            }
             wrapper.position.set(baseX, cy);
             wrapper.addChild(echo, display);
             this.textLayer.addChild(wrapper);
@@ -273,40 +345,19 @@ export class FusionPixiRuntime {
                 blurFilter,
                 baseX,
                 baseY: cy,
-                fontSize,
+                fontSize: fontSize * smallMul,
                 glyph,
             });
         });
 
-        // 商籁式装饰字：hero 词 + 句末词的超大淡色副本，带景深。
-        if (this.options.tuning.showDecor && shot.wordCount > 0) {
-            const wordList: string[] = [];
-            const wordByIndex = new Map<number, string>();
-            shot.glyphs.forEach(g => {
-                if (g.isSpace || g.wordIndex < 0) return;
-                const existing = wordByIndex.get(g.wordIndex) ?? '';
-                wordByIndex.set(g.wordIndex, existing + g.char);
-            });
-            wordByIndex.forEach(text => wordList.push(text));
-            const heroText = shot.heroIndex >= 0 ? (wordList[shot.heroIndex] ?? '') : '';
-            const lastText = wordList.length > 0 ? wordList[wordList.length - 1] : '';
-            const decoSpecs: { text: string; scale: number; dx: number; dy: number; rot: number; alpha: number }[] = [];
-            if (heroText) {
-                decoSpecs.push({ text: heroText, scale: 2.7, dx: -0.34, dy: -0.22, rot: -0.12, alpha: 0.15 });
-            }
-            if (lastText && lastText !== heroText) {
-                decoSpecs.push({ text: lastText, scale: 2.0, dx: 0.32, dy: 0.24, rot: 0.07, alpha: 0.1 });
-            }
-            decoSpecs.forEach(ds => {
-                const deco = new Text({ text: ds.text, style: decoStyle });
-                deco.anchor.set(0.5);
-                deco.alpha = ds.alpha;
-                deco.scale.set(ds.scale);
-                deco.rotation = ds.rot;
-                deco.position.set(width * (0.5 + ds.dx), height * (0.5 + ds.dy));
-                this.textLayer.addChildAt(deco, 0);
-                this.decoViews.push(deco);
-            });
+        // 主体大字 = hero 词（放大字），与小字同处一条基线、占同一块中心区域。
+        if (this.options.tuning.showDecor && shot.wordCount > 0 && heroText) {
+            const deco = new Text({ text: heroText, style: decoStyle });
+            deco.anchor.set(0.5);
+            // heroFontSize 已含 heroMul，deco 不再叠加 scale；小字按实际占宽让位。
+            deco.position.set(heroCenterX, cy);
+            this.textLayer.addChildAt(deco, 0);
+            this.decoViews.push(deco);
         }
 
         this.drawRules(width, height);
@@ -351,6 +402,18 @@ export class FusionPixiRuntime {
         }
     }
 
+    private fadeOutPreviousLine(time: number) {
+        if (!this.prevTextLayer) return;
+        const PREV_FADE_DUR = 0.6;
+        const p = (time - this.prevFadeStart) / PREV_FADE_DUR;
+        if (p >= 1) {
+            this.prevTextLayer.destroy({ children: true });
+            this.prevTextLayer = null;
+            return;
+        }
+        this.prevTextLayer.alpha = Math.max(0, 1 - easeInOut(Math.max(0, p)));
+    }
+
     private renderFrame = () => {
         if (this.destroyed || this.shots.length === 0) return;
         const time = this.options.currentTime.get();
@@ -360,9 +423,11 @@ export class FusionPixiRuntime {
         if (activeIndex !== this.activeLineIndex) {
             this.activeLineIndex = activeIndex;
             this.drawRules(width, height);
-            this.drawHalos(width, height, time);
             this.rebuildText(width, height);
         }
+        // 背景光晕随播放时间呼吸旋转；静态模式仅按行索引取固定构图。
+        this.drawHalos(width, height, this.options.staticMode ? this.activeLineIndex * 1.7 : time);
+        this.fadeOutPreviousLine(time);
         this.updateGlyphs(time);
     };
 
