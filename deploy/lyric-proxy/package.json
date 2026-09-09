@@ -1,0 +1,12 @@
+{
+  "name": "folia-lyric-proxy",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "express": "5.2.1"
+  }
+}

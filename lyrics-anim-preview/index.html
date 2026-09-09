@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>歌词动画预览 · 镜头 v14</title>
+<style>
+  :root {
+    --paper:#f0eadb; --ink:#2b241c; --gold:#f5c56b; --deep:#17130e;
+    --tone1:#e4dcc8; --tone2:#c4baa4; --tone3:#83796a; --tone4:#574e42;
+    --accent:#f5c56b;
+    --glow:rgba(245,197,107,.55);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:"PingFang SC","Noto Serif SC","Noto Serif CJK SC","Microsoft YaHei",serif;
+    color:var(--paper); overflow:hidden; display:flex; flex-direction:column;
+    background:var(--deep);
+    -webkit-font-smoothing:antialiased;
+  }
+  header { padding:14px 20px 6px; text-align:center; flex-shrink:0; z-index:30; position:relative; }
+  header h1 { font-size:17px; font-weight:700; letter-spacing:2px; }
+  header .sub { margin-top:3px; font-size:11px; color:rgba(240,234,219,.5); letter-spacing:.5px; min-height:15px; }
+  #kindLabel { color:var(--gold); letter-spacing:1px; }
+  .tab-row { display:flex; flex-wrap:wrap; justify-content:center; gap:7px; margin-top:8px; }
+  .tab-row .label { width:100%; font-size:10px; color:rgba(240,234,219,.35); letter-spacing:1px; margin-bottom:-2px; }
+  .tab {
+    appearance:none; border:1px solid rgba(255,255,255,.13);
+    background:rgba(255,255,255,.035); color:rgba(240,234,219,.82);
+    font-size:12.5px; padding:6px 14px; border-radius:999px; cursor:pointer;
+    transition:all .2s ease; letter-spacing:.5px;
+  }
+  .tab:hover { background:rgba(255,255,255,.09); }
+  .tab.active { background:linear-gradient(135deg, rgba(245,197,107,.2), rgba(207,198,180,.16)); border-color:rgba(245,197,107,.6); color:#ffe9c0; }
+
+  .viewport { flex:1; position:relative; overflow:hidden; }
+  .scene {
+    position:absolute; left:50%; top:50%;
+    width:140vw; height:140vh; margin-left:-70vw; margin-top:-70vh;
+    will-change:transform;
+  }
+  .vignette {
+    position:absolute; inset:0; pointer-events:none; z-index:6;
+    background:radial-gradient(120% 100% at 50% 50%, transparent 58%, rgba(0,0,0,.55) 100%);
+  }
+  .wipe {
+    position:absolute; inset:-35%; background:var(--gold);
+    opacity:0; will-change:transform; pointer-events:none; z-index:5;
+  }
+
+  .bg { position:absolute; inset:-6%; will-change:opacity,transform; overflow:hidden; }
+  .bg .base { position:absolute; inset:0; background:var(--tone1); }
+  .bg .colrule {
+    position:absolute; left:var(--lx); top:0; bottom:0; width:1px;
+    background:var(--tone3); opacity:.3;
+  }
+  .bg .hwrap {
+    position:absolute; left:var(--lx); top:var(--ty); width:var(--w); height:var(--h);
+    will-change:transform;
+  }
+  .bg .hshape { position:absolute; inset:0; animation:hsFloat var(--bf,12s) ease-in-out var(--bd,0s) infinite; }
+  .bg .hshape.ring {
+    border:var(--sw,1.5px) solid var(--sc); border-radius:50%;
+    -webkit-mask:conic-gradient(from var(--gap0,0deg), transparent 0 var(--gap,50deg), #000 var(--gap,50deg) 360deg);
+    mask:conic-gradient(from var(--gap0,0deg), transparent 0 var(--gap,50deg), #000 var(--gap,50deg) 360deg);
+  }
+  .bg .hshape.square { border:var(--sw,1.5px) solid var(--sc); }
+  .bg .hshape.cross::before, .bg .hshape.cross::after {
+    content:''; position:absolute; box-sizing:border-box; border:var(--sw,1.5px) solid var(--sc);
+  }
+  .bg .hshape.cross::before { left:0; right:0; top:30%; bottom:30%; }
+  .bg .hshape.cross::after { top:0; bottom:0; left:30%; right:30%; }
+  .bg .hshape.spark {
+    background:var(--sc);
+    clip-path:polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+    filter:drop-shadow(0 0 7px var(--glow));
+    animation:hsSpark var(--bf,3.4s) ease-in-out var(--bd,0s) infinite;
+  }
+  @keyframes hsFloat {
+    0%,100% { transform:rotate(var(--rot,0deg)) translateY(0) scale(1); }
+    50% { transform:rotate(var(--rot,0deg)) translateY(-1.2vh) scale(1.03); }
+  }
+  @keyframes hsSpark {
+    0%,100% { transform:scale(1); opacity:.45; }
+    50% { transform:scale(1.55); opacity:1; }
+  }
+
+  .board {
+    position:absolute; left:50%; top:50%;
+    display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+    will-change:transform,opacity,filter;
+    perspective:900px;
+  }
+  .board .paper-plate {
+    position:absolute; inset:-0.34em -0.5em;
+    background:var(--paper); border-radius:0.18em;
+    box-shadow:0 24px 60px rgba(0,0,0,.45);
+  }
+  .board .plate-edge {
+    position:absolute; inset:-0.34em -0.5em;
+    border:2px solid var(--ink); border-radius:0.18em;
+  }
+  .board.tracking-mode { flex-wrap:nowrap; }
+  .board.tracking-mode .paper-plate,
+  .board.tracking-mode .plate-edge { display:none; }
+  .board.tracking-mode .word { color:var(--ink); }
+
+  .word {
+    position:relative; display:inline-block; white-space:pre;
+    color:var(--ink); font-weight:var(--fw, 600); transform-origin:center;
+    will-change:transform,opacity,filter;
+    backface-visibility:hidden;
+  }
+  .word .echo {
+    position:absolute; left:0; top:0; width:100%;
+    color:var(--tone3); will-change:transform,opacity; pointer-events:none;
+  }
+  .board.tracking-mode .word .echo { color:var(--tone3); }
+
+  .board .deco {
+    position:absolute; left:50%; top:50%; white-space:nowrap;
+    color:var(--ink); opacity:.13; filter:blur(2.5px); pointer-events:none;
+    transform-origin:center; will-change:transform,opacity;
+    font-weight:900; letter-spacing:.02em;
+  }
+
+  footer { flex-shrink:0; padding:8px 20px 14px; text-align:center; color:rgba(240,234,219,.5); font-size:11.5px; z-index:30; position:relative; }
+  .dots { display:flex; justify-content:center; gap:7px; margin-bottom:6px; }
+  .dot { width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.16); transition:all .3s ease; }
+  .dot.on { background:var(--gold); transform:scale(1.5); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>镜头 · 完整动画</h1>
+    <div class="sub">镜头推拉 / 逐字跟随 / 停留 自动编排 · 平移 / 扫场 / 漂移 转场接力 · <span id="kindLabel"></span></div>
+    <div class="tab-row" id="presetRow"><span class="label">风格</span></div>
+    <div class="tab-row" id="paletteRow"><span class="label">配色</span></div>
+    <div class="tab-row" id="fontRow"><span class="label">字体</span></div>
+    <div class="tab-row" id="intensityRow"><span class="label">强度</span></div>
+  </header>
+
+  <div class="viewport" id="viewport">
+    <div class="scene" id="scene">
+      <div id="bgs"></div>
+      <div id="boards"></div>
+    </div>
+    <div class="wipe" id="wipe"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <footer>
+    <div class="dots" id="dots"></div>
+    <div id="footerText"></div>
+  </footer>
+
+<script>
+(function () {
+  const LYRICS = [
+    '长亭外 古道边',
+    '芳草碧连天',
+    '晚风拂柳笛声残',
+    '夕阳山外山',
+    '天之涯 地之角',
+    '知交半零落',
+    '一壶浊酒尽余欢',
+    '今宵别梦寒',
+  ];
+
+  // ---- 每句的镜头类型与转场类型编排（8 句循环） ----
+  const SHOT_SEQ = ['pan','tracking','pan','tracking','tableau','pan','tracking','tableau'];
+  const TRANS_SEQ = ['camera-pan','block-wipe','shape-carry','camera-pan','block-wipe','shape-carry','camera-pan','block-wipe'];
+  const SHOT_NAME = { pan:'推拉', tracking:'跟随', tableau:'停留' };
+  const TRANS_NAME = { 'camera-pan':'平移', 'block-wipe':'扫场', 'shape-carry':'漂移' };
+
+  const SHOT_DUR = 3.8;
+  const TRANSITION = 0.6;
+  const L = LYRICS.length;
+  const CYCLE = L * SHOT_DUR;
+
+  const clamp01 = v => Math.min(1, Math.max(0, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easeInOut = v => { const t = clamp01(v); return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; };
+  const easeOutExpo = v => v === 1 ? 1 : 1 - Math.pow(2, -10 * v);
+  const elasticOut = v => { const t = clamp01(v), p = 0.3; return Math.pow(2, -10 * t) * Math.sin((t - p / 4) * (2 * Math.PI) / p) + 1; };
+
+  function rnd(seed, n) {
+    const x = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  const INTENSITY = {
+    calm:    { amp: 0.65, breath: 0.65, shake: 0.0, word: 0.7 },
+    normal:  { amp: 1.00, breath: 1.00, shake: 0.0, word: 1.0 },
+    chaotic: { amp: 1.35, breath: 1.35, shake: 0.35, word: 1.45 },
+  };
+
+  const FONTS = {
+    serif: { label: '衬线·加糖', family: "'獅尾四季春加糖SC', 'Iowan Old Style', 'Noto Serif CJK SC', 'Noto Serif JP', 'Source Han Serif SC', 'Songti SC', 'STSong', 'Georgia', serif" },
+    sans:  { label: '黑体', family: "'Inter', 'Noto Sans CJK SC', 'Noto Sans JP', 'Source Han Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif" },
+    mono:  { label: '等宽', family: "'IBM Plex Mono', 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', 'Noto Sans Mono', 'SFMono-Regular', Consolas, monospace" },
+    maShan:   { label: '马善政楷书', family: '"Ma Shan Zheng", "Noto Serif CJK SC", "Songti SC", STSong, serif', cdn: 'https://cdn.jsdmirror.cn/npm/@fontsource/ma-shan-zheng/files/ma-shan-zheng-chinese-simplified-400-normal.woff2' },
+    longCang: { label: '龙藏行书', family: '"Long Cang", "Noto Serif CJK SC", "Songti SC", STSong, serif', cdn: 'https://cdn.jsdmirror.cn/npm/@fontsource/long-cang/files/long-cang-chinese-simplified-400-normal.woff2' },
+    zhiMang:  { label: '志莽行草', family: '"Zhi Mang Xing", "Noto Serif CJK SC", "Songti SC", STSong, serif', cdn: 'https://cdn.jsdmirror.cn/npm/@fontsource/zhi-mang-xing/files/zhi-mang-xing-chinese-simplified-400-normal.woff2' },
+    xiaoWei:  { label: '站酷小薇', family: '"ZCOOL XiaoWei", "Noto Serif CJK SC", "Songti SC", STSong, serif', cdn: 'https://cdn.jsdmirror.cn/npm/@fontsource/zcool-xiaowei/files/zcool-xiaowei-chinese-simplified-400-normal.woff2' },
+  };
+  const SIZES = {
+    medium: { normal: 'clamp(40px, 8.4vw, 92px)', tracking: 'clamp(34px, 7vw, 72px)' },
+  };
+
+  const PALETTES = {
+    duo:  { label: '墨金', paper: '#f0eadb', ink: '#2b241c', tone1: '#e4dcc8', tone2: '#c4baa4', tone3: '#83796a', tone4: '#574e42', accent: '#f5c56b', deep: '#17130e', glow: 'rgba(245,197,107,.55)' },
+    mono: { label: '黑白', paper: '#f4f3f0', ink: '#141414', tone1: '#e2e1dd', tone2: '#bcbcb9', tone3: '#7a7a78', tone4: '#4a4a49', accent: '#9a9a98', deep: '#0c0c0c', glow: 'rgba(154,154,152,.5)' },
+    grad: { label: '青墨', paper: '#e8f0ec', ink: '#12261f', tone1: '#d3e2da', tone2: '#a9c2b6', tone3: '#5f8a7c', tone4: '#33544a', accent: '#7fb8a8', deep: '#0e1815', glow: 'rgba(127,184,168,.55)' },
+  };
+
+  const shotKindOf = i => SHOT_SEQ[i % L];
+  const transitionKindOf = i => TRANS_SEQ[i % L];
+
+  // ---- 镜头关键帧 ----
+  function flowAngle(i) { return i * 0.62 + 0.4; }
+  const camEndCache = [];
+  function camStart(i) {
+    if (i === 0) return { x: 0, y: 0, scale: 1.05, rotate: 0 };
+    return camEndCache[i - 1];
+  }
+  function camEnd(i) {
+    if (camEndCache[i]) return camEndCache[i];
+    const s = camStart(i);
+    const f = flowAngle(i);
+    const push = (i % 2 === 0) ? 0.03 : -0.03;
+    const e = {
+      x: s.x + Math.cos(f) * 0.05,
+      y: s.y + Math.sin(f) * 0.05,
+      scale: Math.min(1.12, Math.max(1.0, s.scale + push)),
+      rotate: s.rotate + Math.sin(f) * 0.006,
+    };
+    camEndCache[i] = e;
+    return e;
+  }
+
+  const B_OFFSET = 0.006, B_SCALE = 0.002, B_ROT = 0.0015;
+  function breathFrame(t, phase) {
+    const tau = t * Math.PI * 2;
+    return {
+      x: (Math.sin(tau*0.13 + phase) * 0.65 + Math.sin(tau*0.31 + phase*1.7) * 0.35) * B_OFFSET,
+      y: (Math.cos(tau*0.11 + phase*2.3) * 0.65 + Math.sin(tau*0.29 + phase*0.9) * 0.35) * B_OFFSET,
+      scale: Math.sin(tau*0.09 + phase*1.3) * B_SCALE,
+      rotate: Math.sin(tau*0.07 + phase*2.9) * B_ROT,
+    };
+  }
+  function shakeFrame(t, intensity) {
+    if (intensity <= 0) return { x: 0, y: 0, r: 0 };
+    return {
+      x: Math.sin(t*123.456) * Math.cos(t*789.123) * 0.008 * intensity,
+      y: Math.cos(t*345.678) * Math.sin(t*901.234) * 0.008 * intensity,
+      r: Math.sin(t*567.890) * 0.003 * intensity,
+    };
+  }
+
+  const wrappedTime = t => ((t % CYCLE) + CYCLE) % CYCLE;
+
+  // ---- 镜头：按 shot 类型 ----
+  function cameraAt(t, cfg, phase, i, follow) {
+    const wrapped = wrappedTime(t);
+    const p = (wrapped - i * SHOT_DUR) / SHOT_DUR;
+    const eased = p * 0.5 + easeInOut(p) * 0.5;
+    const s = camStart(i), e = camEnd(i);
+    const b = breathFrame(t, phase);
+    const sh = shakeFrame(t, cfg.shake);
+    const kind = shotKindOf(i);
+
+    if (kind === 'tracking') {
+      return {
+        x: -follow.x * 0.5 + b.x * cfg.breath + sh.x,
+        y: -follow.y * 0.5 + b.y * cfg.breath + sh.y,
+        scale: 1.04 + b.scale * cfg.breath,
+        rotate: b.rotate * cfg.breath + sh.r,
+      };
+    }
+    if (kind === 'tableau') {
+      const slow = 1.06 + Math.sin(t * 0.05 + phase) * 0.015;
+      return {
+        x: b.x * cfg.breath + sh.x,
+        y: b.y * cfg.breath + sh.y,
+        scale: slow + b.scale * cfg.breath,
+        rotate: b.rotate * cfg.breath + sh.r,
+      };
+    }
+    return {
+      x: lerp(s.x, e.x, eased) * cfg.amp + b.x * cfg.breath + sh.x,
+      y: lerp(s.y, e.y, eased) * cfg.amp + b.y * cfg.breath + sh.y,
+      scale: lerp(s.scale, e.scale, eased) + b.scale * cfg.breath,
+      rotate: lerp(s.rotate, e.rotate, eased) * cfg.amp + b.rotate * cfg.breath + sh.r,
+    };
+  }
+
+  // ---- 转场状态 ----
+  function transitionState(t) {
+    const wrapped = wrappedTime(t);
+    const active = Math.floor(wrapped / SHOT_DUR);
+    const trP = wrapped % SHOT_DUR;
+    if (trP > SHOT_DUR - TRANSITION) {
+      return { kind: transitionKindOf(active), p: (trP - (SHOT_DUR - TRANSITION)) / (2 * TRANSITION), phase: 'exit', exitIdx: active };
+    }
+    if (trP < TRANSITION) {
+      const exitIdx = (active - 1 + L) % L;
+      return { kind: transitionKindOf(exitIdx), p: (trP + TRANSITION) / (2 * TRANSITION), phase: 'enter', exitIdx };
+    }
+    return null;
+  }
+
+  const IDLE = { x: 0, y: 0, scale: 1, alpha: 1, blur: 0 };
+  function resolveTransition(kind, role, p, flowX, flowY) {
+    const linear = clamp01(p);
+    const eased = easeInOut(linear);
+    if (kind === 'shape-carry') {
+      const drift = (role === 'exit' ? eased : eased - 1) * 0.09;
+      const away = role === 'exit' ? eased : 1 - eased;
+      const alpha = role === 'exit' ? 1 - clamp01((linear - 0.55) / 0.45) : clamp01(linear / 0.45);
+      return { x: flowX * drift, y: flowY * drift, scale: 1 + away * 0.07, alpha, blur: away * 6 };
+    }
+    // camera-pan
+    const travel = 0.5;
+    const offset = role === 'exit' ? eased * travel : -(1 - eased) * travel;
+    const alpha = role === 'exit' ? 1 - clamp01((linear - 0.72) / 0.28) : clamp01(linear / 0.3);
+    return { x: flowX * offset, y: flowY * offset, scale: 1 + (role === 'exit' ? eased : 1 - eased) * 0.03, alpha, blur: 0 };
+  }
+
+  // board 在转场中的角色帧
+  function boardTransitionFrame(i, t, st) {
+    if (!st || st.kind === 'block-wipe') return IDLE;
+    const active = Math.floor(wrappedTime(t) / SHOT_DUR);
+    let role = null;
+    if (st.phase === 'exit') {
+      if (i === active) role = 'exit';
+      else if (i === (active + 1) % L) role = 'enter';
+    } else {
+      if (i === active) role = 'enter';
+      else if (i === (active - 1 + L) % L) role = 'exit';
+    }
+    if (!role) return IDLE;
+    const f = flowAngle(st.exitIdx);
+    return resolveTransition(st.kind, role, st.p, Math.cos(f), Math.sin(f));
+  }
+
+  // 几套风格预设：一键切换 配色 + 强度（逐字动画已融合为同一套）
+  const PRESETS = {
+    fume:    { label: '浮名·报章', palette: 'duo',  intensity: 'normal' },
+    tempera: { label: '凝彩·纸墨', palette: 'grad', intensity: 'normal' },
+    sonnet:  { label: '商籁·制图', palette: 'mono', intensity: 'calm' },
+    riot:    { label: '交融·狂放', palette: 'duo',  intensity: 'chaotic' },
+  };
+
+  // 每句一个 hero 词放大、其余缩小，模仿商籁的 hero/support 字号层次（对比拉大到约 2.5 倍）
+  function resolveWordScales(wordList, lineIndex) {
+    const seed = lineIndex * 997 + 131;
+    const lengths = wordList.map(w => w.length);
+    const maxLength = Math.max(0, ...lengths);
+    const heroCandidates = lengths.map((len, idx) => (len > 0 && len >= maxLength - 1 ? idx : -1)).filter(idx => idx >= 0);
+    const heroIndex = heroCandidates.length > 0
+      ? heroCandidates[Math.floor(rnd(seed, lineIndex * 101) * heroCandidates.length) % heroCandidates.length]
+      : -1;
+    const scales = wordList.map(function (_, index) {
+      return index === heroIndex
+        ? 1.62 + rnd(seed, lineIndex * 31 + index) * 0.3
+        : 0.58 + rnd(seed, lineIndex * 31 + index) * 0.14;
+    });
+    return { scales, heroIndex };
+  }
+
+  // 逐字入场参数：方向入射（凝彩 slide 变体）、swing 旋转、stamp 砸下，奇偶错位（商籁 stagger）
+  function wordEnterParams(seed, index) {
+    const stagger = index % 2 === 0 ? -1 : 1;
+    const roll = Math.floor(rnd(seed, 2) * 100);
+    let dirX = 0, dirY = 0, rot = 0, stamp = false;
+    if (roll < 32) {
+      const dirs = [[-1, 0.12], [1, -0.12], [0.12, -1], [-0.12, 1]];
+      const d = dirs[Math.floor(rnd(seed, 3) * 4)];
+      dirX = d[0]; dirY = d[1];
+    } else if (roll < 58) {
+      const dirs = [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]];
+      const d = dirs[Math.floor(rnd(seed, 4) * 4)];
+      dirX = d[0]; dirY = d[1];
+    } else if (roll < 78) {
+      rot = stagger * (0.6 + rnd(seed, 5) * 0.5);
+      dirX = stagger * 0.2;
+      dirY = -0.55;
+    } else {
+      stamp = true;
+    }
+    const mag = 0.7 + rnd(seed, 6) * 0.5;
+    return { dirX, dirY, rot, stamp, mag };
+  }
+  const scene = document.getElementById('scene');
+  const bgsEl = document.getElementById('bgs');
+  const boardsEl = document.getElementById('boards');
+  const wipeEl = document.getElementById('wipe');
+  const presetRow = document.getElementById('presetRow');
+  const paletteRow = document.getElementById('paletteRow');
+  const fontRow = document.getElementById('fontRow');
+  const intensityRow = document.getElementById('intensityRow');
+  const kindLabel = document.getElementById('kindLabel');
+  const dotsEl = document.getElementById('dots');
+  const footerText = document.getElementById('footerText');
+  const viewportEl = document.getElementById('viewport');
+
+  let currentFont = 'serif';
+  let currentIntensity = 'normal';
+  let currentPalette = 'duo';
+  let currentPreset = 'riot';
+  const boards = [];
+  const bgs = [];
+  let lastActive = -1;
+
+  // 浮名背景：纸张 + 四周线形几何光环（缺口圆环/方框/十字/星光）+ 报章栏线，淡描边、慢旋转、带视差
+  const HALO_KINDS = ['ring', 'square', 'cross'];
+
+  function haloComposition(i) {
+    const s = i * 977 + 131;
+    const h = n => rnd(s, n);
+    const shapes = [];
+    const baseCount = 6 + Math.floor(h(0) * 3);
+    for (let k = 0; k < baseCount; k += 1) {
+      const side = Math.floor(h(k + 1) * 4);
+      const along = -0.4 + h(k + 2) * 0.8;
+      const overflow = 0.04 + h(k + 3) * 0.07;
+      let x, y;
+      if (side === 0) { x = -0.44 - overflow; y = along; }
+      else if (side === 1) { x = 0.44 + overflow; y = along; }
+      else if (side === 2) { x = along; y = -0.44 - overflow; }
+      else { x = along; y = 0.44 + overflow; }
+      shapes.push({
+        kind: HALO_KINDS[k % HALO_KINDS.length],
+        x, y,
+        w: 9 + h(k + 4) * 13,
+        rot: (h(k + 5) * 360).toFixed(1),
+        depth: h(k + 6),
+        color: h(k + 7) > 0.5 ? 'accent' : 'ink',
+        sw: (0.6 + h(k + 8) * 1.7).toFixed(2),
+        gap0: Math.floor(h(k + 9) * 360),
+        gap: Math.floor(24 + h(k + 10) * 150),
+      });
+    }
+    const sparkCount = 8 + Math.floor(h(20) * 5);
+    for (let k = 0; k < sparkCount; k += 1) {
+      shapes.push({
+        kind: 'spark',
+        x: -0.32 + h(k + 21) * 0.64,
+        y: -0.36 + h(k + 22) * 0.72,
+        w: 1.4 + h(k + 23) * 3,
+        rot: 0,
+        depth: h(k + 24),
+        color: h(k + 25) > 0.5 ? 'accent' : 'ink',
+        sw: 0,
+      });
+    }
+    return shapes;
+  }
+
+  function renderHaloShape(sp, i) {
+    const wrap = document.createElement('div');
+    wrap.className = 'hwrap';
+    wrap.style.setProperty('--lx', (50 + sp.x * 100) + '%');
+    wrap.style.setProperty('--ty', (50 + sp.y * 100) + '%');
+    wrap.style.setProperty('--w', sp.w + 'vw');
+    wrap.style.setProperty('--h', sp.w + 'vw');
+    const el = document.createElement('div');
+    el.className = 'hshape ' + sp.kind;
+    el.style.setProperty('--sc', sp.color === 'accent' ? 'var(--accent)' : 'var(--ink)');
+    if (sp.kind === 'spark') {
+      el.style.setProperty('--bf', (2.6 + rnd(i, 52) * 2).toFixed(2) + 's');
+    } else {
+      el.style.setProperty('--sw', sp.sw + 'px');
+      el.style.setProperty('--rot', sp.rot + 'deg');
+      el.style.setProperty('--bf', (9 + rnd(i, 40) * 6).toFixed(2) + 's');
+    }
+    el.style.setProperty('--bd', (rnd(i, 41) * 6).toFixed(2) + 's');
+    if (sp.kind === 'ring') {
+      el.style.setProperty('--gap0', sp.gap0 + 'deg');
+      el.style.setProperty('--gap', sp.gap + 'deg');
+    }
+    wrap.appendChild(el);
+    return { wrap, depth: sp.depth };
+  }
+
+  function buildBackgrounds() {
+    bgsEl.innerHTML = '';
+    bgs.length = 0;
+    LYRICS.forEach(function (_, i) {
+      const shapes = haloComposition(i);
+      const bg = document.createElement('div');
+      bg.className = 'bg';
+      const base = document.createElement('div');
+      base.className = 'base';
+      bg.appendChild(base);
+      const cols = 2 + Math.floor(rnd(i, 77) * 3);
+      for (let c = 1; c < cols; c += 1) {
+        const l = document.createElement('div');
+        l.className = 'colrule';
+        l.style.setProperty('--lx', ((c / cols) * 100).toFixed(1) + '%');
+        bg.appendChild(l);
+      }
+      const haloShapes = [];
+      shapes.forEach(function (sp) {
+        const hs = renderHaloShape(sp, i);
+        bg.appendChild(hs.wrap);
+        haloShapes.push(hs);
+      });
+      bg.style.opacity = '0';
+      bgsEl.appendChild(bg);
+      bgs.push({ el: bg, shapes: haloShapes });
+    });
+  }
+
+  function buildBoard(i) {
+    const start = i * SHOT_DUR;
+    const kind = shotKindOf(i);
+    const text = LYRICS[i];
+    const wordList = text.split(' ').filter(w => w.length > 0);
+    const { scales, heroIndex } = resolveWordScales(wordList, i);
+    const chars = text.split('');
+    const sung = chars.filter(c => c !== ' ');
+    const step = SHOT_DUR / sung.length;
+
+    const boardEl = document.createElement('div');
+    boardEl.className = 'board' + (kind === 'tracking' ? ' tracking-mode' : '');
+    boardEl.style.fontSize = kind === 'tracking' ? SIZES.medium.tracking : SIZES.medium.normal;
+    boardEl.style.transform = 'translate(-50%,-50%)';
+
+    const plate = document.createElement('div');
+    plate.className = 'paper-plate';
+    boardEl.appendChild(plate);
+    const edge = document.createElement('div');
+    edge.className = 'plate-edge';
+    boardEl.appendChild(edge);
+
+    // 商籁式装饰字：hero 词 + 句末词的超大淡色副本，带景深，作为背景层次
+    const decos = [];
+    const decoSpecs = [];
+    if (heroIndex >= 0) {
+      decoSpecs.push({ text: wordList[heroIndex], scale: 2.7 + rnd(i, 91) * 0.5, dx: -0.34 + rnd(i, 92) * 0.08, dy: -0.22 + rnd(i, 93) * 0.1, rot: -7 + rnd(i, 94) * 6, depth: 0.5, opacity: 0.15 });
+    }
+    if (wordList.length > 1) {
+      const lastIdx = wordList.length - 1;
+      const last = lastIdx === heroIndex ? Math.max(0, lastIdx - 1) : lastIdx;
+      decoSpecs.push({ text: wordList[last], scale: 2.0 + rnd(i, 95) * 0.5, dx: 0.32 + rnd(i, 96) * 0.08, dy: 0.24 + rnd(i, 97) * 0.1, rot: 4 + rnd(i, 98) * 6, depth: 1.4, opacity: 0.1 });
+    }
+    decoSpecs.forEach(function (ds) {
+      const d = document.createElement('span');
+      d.className = 'deco';
+      d.textContent = ds.text;
+      d.style.fontSize = ds.scale + 'em';
+      d.style.opacity = ds.opacity.toFixed(3);
+      boardEl.appendChild(d);
+      decos.push({ el: d, dx: ds.dx, dy: ds.dy, rot: ds.rot, depth: ds.depth });
+    });
+
+    const words = [];
+    let si = 0;
+    let wordIdx = -1;
+    let inWord = false;
+    const wc = Math.max(1, wordList.length);
+    chars.forEach(function (ch, ci) {
+      const isSpace = ch === ' ';
+      if (!isSpace && !inWord) { wordIdx += 1; inWord = true; }
+      if (isSpace) inWord = false;
+
+      const w = document.createElement('span');
+      w.className = 'word';
+      const echo = document.createElement('span');
+      echo.className = 'echo';
+      echo.textContent = ch;
+      w.appendChild(echo);
+      const g = document.createElement('span');
+      g.textContent = ch;
+      w.appendChild(g);
+      boardEl.appendChild(w);
+
+      const seed = i * 997 + ci * 131;
+      const st = isSpace ? start : start + si * step;
+      const et = isSpace ? start : start + (si + 1) * step;
+      if (!isSpace) si += 1;
+
+      // 唱后散开方向：词在句中的水平位置，中心向外（凝彩 release tracking）
+      const trackingX = wc > 1 ? (wordIdx - (wc - 1) / 2) / ((wc - 1) / 2) : 0;
+
+      if (isSpace) w.dataset.space = '1';
+      else w.style.fontSize = (scales[wordIdx] || 1).toFixed(3) + 'em';
+
+      words.push({
+        el: w, echoEl: echo, start: st, end: et,
+        seed, isSpace,
+        enter: wordEnterParams(seed, wordIdx),
+        trackingX,
+        releaseDur: 0.8 + rnd(seed, 7) * 0.5,
+      });
+    });
+
+    boardEl.style.opacity = '0';
+    boardsEl.appendChild(boardEl);
+    return { el: boardEl, words, decos, start, end: start + SHOT_DUR, kind, flow: flowAngle(i) };
+  }
+
+  // 融合逐字动画：商籁弹性入场 + 凝彩方向入射/唱后散开/残影 + 浮名墨晕落纸
+  function wordFrame(w, t, cfg) {
+    const ENTER_DUR = 0.6;
+    const p = clamp01((t - w.start) / ENTER_DUR);
+    const elastic = elasticOut(p);
+    const travel = 1 - elastic;
+    const ink = easeOutExpo(p);
+    const wordMul = cfg.word;
+
+    // 入场位移（方向 × 弹性，奇偶错位已折入方向）
+    const en = w.enter;
+    const enterX = en.dirX * en.mag * travel * wordMul;
+    const enterY = en.dirY * en.mag * travel * wordMul;
+    const rot = en.rot * travel * wordMul;
+    // stamp 原地砸下 oversize，普通词从 0.72 弹性到位
+    const scale = en.stamp ? 1 + travel * 0.55 : 0.72 + 0.28 * elastic;
+
+    // 浮名墨晕：入场 blur 7px → 0
+    const blur = 7 * (1 - ink);
+
+    // 凝彩残影：随入场淡出
+    const echoAlpha = travel * 0.5;
+
+    // 凝彩唱后散开：tracking 扩张，中心向外
+    const relP = clamp01((t - w.end) / Math.max(w.releaseDur, 0.001));
+    const release = easeInOut(relP);
+    const driftX = w.trackingX * release * 0.085 * wordMul;
+
+    return { x: enterX + driftX, y: enterY, rot, scale, echoAlpha, blur, ex: enterX, ey: enterY };
+  }
+
+  function resolveFollowOffset(bd, t, vw, vh) {
+    let cur = null;
+    for (const w of bd.words) {
+      if (w.isSpace) continue;
+      if (t >= w.start) cur = w; else break;
+    }
+    if (!cur) return { x: 0, y: 0 };
+    const bx = bd.el.offsetWidth / 2;
+    const by = bd.el.offsetHeight / 2;
+    const cx = cur.el.offsetLeft + cur.el.offsetWidth / 2;
+    const cy = cur.el.offsetTop + cur.el.offsetHeight / 2;
+    return { x: (cx - bx) / vw, y: (cy - by) / vh };
+  }
+
+  function renderDots(active) {
+    dotsEl.innerHTML = '';
+    LYRICS.forEach(function (_, i) {
+      const d = document.createElement('span');
+      d.className = 'dot' + (i === active ? ' on' : '');
+      dotsEl.appendChild(d);
+    });
+  }
+
+  function frame(nowMs) {
+    const t = nowMs / 1000;
+    const cfg = INTENSITY[currentIntensity];
+    const wrapped = wrappedTime(t);
+    const active = Math.floor(wrapped / SHOT_DUR);
+    const phase = active * 1.7;
+    const vw = viewportEl.clientWidth, vh = viewportEl.clientHeight;
+    const st = transitionState(t);
+
+    let follow = { x: 0, y: 0 };
+    if (shotKindOf(active) === 'tracking') follow = resolveFollowOffset(boards[active], t, vw, vh);
+
+    const cam = cameraAt(t, cfg, phase, active, follow);
+    scene.style.transform =
+      'translate3d(' + (cam.x * vw).toFixed(2) + 'px,' + (cam.y * vh).toFixed(2) + 'px,0) ' +
+      'scale(' + cam.scale.toFixed(5) + ') ' +
+      'rotate(' + (cam.rotate * 57.2958).toFixed(4) + 'deg)';
+
+    // wipe 覆盖层
+    if (st && st.kind === 'block-wipe') {
+      const f = flowAngle(st.exitIdx);
+      const full = Math.hypot(vw, vh) * 0.9;
+      const off = lerp(-full, full, st.p);
+      wipeEl.style.opacity = '1';
+      wipeEl.style.transform = 'translate(' + (Math.cos(f) * off).toFixed(1) + 'px,' + (Math.sin(f) * off).toFixed(1) + 'px)';
+    } else {
+      wipeEl.style.opacity = '0';
+    }
+
+    bgs.forEach(function (bg, i) {
+      const visible = (st && st.kind !== 'block-wipe')
+        ? (i === active || i === (active - 1 + L) % L || i === (active + 1) % L)
+        : (i === active);
+      if (!visible) { bg.el.style.opacity = '0'; return; }
+      const tr = boardTransitionFrame(i, t, st);
+      bg.el.style.transform = 'translate(' + (tr.x * vw).toFixed(2) + 'px,' + (tr.y * vh).toFixed(2) + 'px) scale(' + tr.scale.toFixed(4) + ')';
+      bg.el.style.opacity = tr.alpha.toFixed(3);
+      bg.el.style.filter = tr.blur > 0 ? 'blur(' + tr.blur.toFixed(1) + 'px)' : 'none';
+      const parX = cam.x * vw, parY = cam.y * vh;
+      bg.shapes.forEach(function (sh) {
+        const p = 1 - sh.depth;
+        sh.wrap.style.transform = 'translate(' + (parX * p * 0.45).toFixed(2) + 'px,' + (parY * p * 0.45).toFixed(2) + 'px)';
+      });
+    });
+
+    boards.forEach(function (bd, i) {
+      const visible = (st && st.kind !== 'block-wipe')
+        ? (i === active || i === (active - 1 + L) % L || i === (active + 1) % L)
+        : (i === active);
+      if (!visible) { bd.el.style.opacity = '0'; return; }
+
+      const lineP = clamp01((wrapped - bd.start) / SHOT_DUR);
+      bd.el.style.letterSpacing = (bd.kind === 'tracking' ? 0.16 : 0.03 + lineP * 0.055).toFixed(3) + 'em';
+
+      const tr = boardTransitionFrame(i, t, st);
+      bd.el.style.transform =
+        'translate3d(calc(-50% + ' + (tr.x * vw).toFixed(2) + 'px), calc(-50% + ' + (tr.y * vh).toFixed(2) + 'px),0) ' +
+        'scale(' + tr.scale.toFixed(4) + ')';
+      bd.el.style.opacity = tr.alpha.toFixed(3);
+      bd.el.style.filter = tr.blur > 0 ? 'blur(' + tr.blur.toFixed(1) + 'px)' : 'none';
+
+      bd.words.forEach(function (w) {
+        if (w.isSpace || t < w.start) { w.el.style.opacity = '0'; return; }
+        const f = wordFrame(w, t, cfg);
+        let swell = 1;
+        if (t >= w.start && t < w.end) {
+          const atk = Math.min(0.12, (w.end - w.start) * 0.5);
+          swell = 1 + 0.05 * easeInOut(clamp01((t - w.start) / Math.max(atk, 0.02))) *
+            (1 - easeInOut(clamp01((t - w.end) / 0.26)));
+        }
+        w.el.style.opacity = '1';
+        w.el.style.transform = 'translate(' + f.x.toFixed(3) + 'em,' + f.y.toFixed(3) + 'em) rotate(' + f.rot.toFixed(3) + 'rad) scale(' + (f.scale * swell).toFixed(4) + ')';
+        w.el.style.filter = f.blur > 0 ? 'blur(' + f.blur.toFixed(2) + 'px)' : 'none';
+        w.echoEl.style.opacity = f.echoAlpha.toFixed(3);
+        w.echoEl.style.transform = 'translate(' + (f.ex * 1.6).toFixed(3) + 'em,' + (f.ey * 1.6).toFixed(3) + 'em)';
+      });
+
+      // 装饰字：随镜头视差漂移
+      const parX = cam.x * vw, parY = cam.y * vh;
+      bd.decos.forEach(function (dc) {
+        const pv = (1 - dc.depth) * 0.5;
+        dc.el.style.transform =
+          'translate(-50%,-50%) rotate(' + dc.rot.toFixed(2) + 'deg) ' +
+          'translate(' + (dc.dx * vw + parX * pv).toFixed(1) + 'px,' + (dc.dy * vh + parY * pv).toFixed(1) + 'px)';
+      });
+    });
+
+    if (active !== lastActive) {
+      lastActive = active;
+      renderDots(active);
+      kindLabel.textContent = '第' + (active + 1) + '句 · 镜头:' + SHOT_NAME[shotKindOf(active)] + ' · 转场:' + TRANS_NAME[transitionKindOf(active)];
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  const loadedFontFaces = {};
+  function applyFont() {
+    const f = FONTS[currentFont];
+    scene.style.fontFamily = f.family;
+    // 个性字体按需从 CDN 懒加载，首次点选时下载并注册
+    if (f.cdn && !loadedFontFaces[currentFont]) {
+      loadedFontFaces[currentFont] = true;
+      const nameMatch = f.family.match(/"([^"]+)"/);
+      if (nameMatch && typeof FontFace !== 'undefined') {
+        const ff = new FontFace(nameMatch[1], 'url(' + f.cdn + ')');
+        ff.load().then(function () {
+          document.fonts.add(ff);
+        }).catch(function () {
+          loadedFontFaces[currentFont] = false;
+        });
+      }
+    }
+  }
+  function applyPalette() {
+    const p = PALETTES[currentPalette];
+    const r = document.documentElement.style;
+    r.setProperty('--paper', p.paper);
+    r.setProperty('--ink', p.ink);
+    r.setProperty('--tone1', p.tone1);
+    r.setProperty('--tone2', p.tone2);
+    r.setProperty('--tone3', p.tone3);
+    r.setProperty('--tone4', p.tone4);
+    r.setProperty('--accent', p.accent);
+    r.setProperty('--gold', p.accent);
+    r.setProperty('--deep', p.deep);
+    r.setProperty('--glow', p.glow);
+  }
+  function applyPreset(key) {
+    const p = PRESETS[key];
+    currentPalette = p.palette;
+    currentIntensity = p.intensity;
+    applyPalette();
+  }
+  function buildTabs() {
+    presetRow.querySelectorAll('.tab').forEach(b => b.remove());
+    Object.keys(PRESETS).forEach(function (k) {
+      const b = document.createElement('button');
+      b.className = 'tab' + (k === currentPreset ? ' active' : '');
+      b.dataset.preset = k; b.textContent = PRESETS[k].label;
+      presetRow.appendChild(b);
+    });
+    paletteRow.querySelectorAll('.tab').forEach(b => b.remove());
+    Object.keys(PALETTES).forEach(function (k) {
+      const b = document.createElement('button');
+      b.className = 'tab' + (k === currentPalette ? ' active' : '');
+      b.dataset.palette = k; b.textContent = PALETTES[k].label;
+      paletteRow.appendChild(b);
+    });
+    fontRow.querySelectorAll('.tab').forEach(b => b.remove());
+    Object.keys(FONTS).forEach(function (k) {
+      const b = document.createElement('button');
+      b.className = 'tab' + (k === currentFont ? ' active' : '');
+      b.dataset.font = k; b.textContent = FONTS[k].label;
+      fontRow.appendChild(b);
+    });
+    intensityRow.querySelectorAll('.tab').forEach(b => b.remove());
+    const labels = { calm: '平静', normal: '正常', chaotic: '狂乱' };
+    Object.keys(INTENSITY).forEach(function (k) {
+      const b = document.createElement('button');
+      b.className = 'tab' + (k === currentIntensity ? ' active' : '');
+      b.dataset.intensity = k; b.textContent = labels[k];
+      intensityRow.appendChild(b);
+    });
+  }
+  presetRow.addEventListener('click', function (e) {
+    const b = e.target.closest('.tab');
+    if (b && b.dataset.preset) { currentPreset = b.dataset.preset; applyPreset(currentPreset); buildTabs(); }
+  });
+  paletteRow.addEventListener('click', function (e) {
+    const b = e.target.closest('.tab');
+    if (b && b.dataset.palette) { currentPalette = b.dataset.palette; currentPreset = null; applyPalette(); buildTabs(); }
+  });
+  fontRow.addEventListener('click', function (e) {
+    const b = e.target.closest('.tab');
+    if (b && b.dataset.font) { currentFont = b.dataset.font; applyFont(); buildTabs(); }
+  });
+  intensityRow.addEventListener('click', function (e) {
+    const b = e.target.closest('.tab');
+    if (b && b.dataset.intensity) { currentIntensity = b.dataset.intensity; currentPreset = null; buildTabs(); }
+  });
+
+  buildBackgrounds();
+  LYRICS.forEach(function (_, i) { boards.push(buildBoard(i)); });
+  applyFont();
+  applyPreset('riot');
+  buildTabs();
+  footerText.textContent = '镜头自动编排 · 共 ' + L + ' 句歌词 · 字级层次 + 唱后散开 + 墨迹落纸 融合动画';
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
