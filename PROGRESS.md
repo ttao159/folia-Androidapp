@@ -127,7 +127,7 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
    - 扫描仓库内 `.env*` 与源码，禁止出现硬编码的**公网**后端地址
      （RFC1918 / localhost / 链路本地放行；私网与公网按 `ipaddress` 同口径区分）
    - 附带断言 `.env` 未被 git 跟踪
-   - **已做变异验证**：注入 `http://93.184.216.34:8080` 后测试立刻变红并精确报出文件行号
+   - **已做变异验证**：注入一个假地址（RFC5737 文档段格式）后测试立刻变红并精确报出文件行号
    - 为什么重过重写历史：重写只清一次、且对已 fork/clone 的人无效；
      守卫对**此后每一次提交**生效。
 2. **AI 配色在原生壳内收敛**：
@@ -139,9 +139,11 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 3. **抽出 `src/services/runtimePlatform.ts`**：把重复在 5 处的「原生壳」判定集中一处
    （含我曾复制进的 `audioNativeInstaller`），并使降级条件与 shim 安装条件同源。
 
-### 明确不做
-4. **不重写 git 历史**：破坏性、影响已合并的 PR；且清历史**不解决**真实风险
-   （轮换/下线那些服务才解决）。已在审计节记录该地址仍可从远程历史检索到。
+### 明确不做（复核更正）
+4. **重写 git 历史**：~~不做~~ → **已执行**。用户明确要求"下线删除端口"，即抹除远程仓库中的
+   地址与端口痕迹，故改用 `git filter-repo` 重写并 force push。
+   注意：**这不能替代真正的下线**——隧道若仍在线，端口照样可达；
+   真正的处置（在 mefrp 控制台删除/禁用隧道、停掉手机上的 frpc）只有服务所有者能做。
 5. **不修既有失败测试**：诊断结论是确定性逻辑漂移，非 flaky、与本轮无关：
    - `appDatabaseMigration:82,123` → `expected 1 to be 0.9`
    - `onlineProviderAccountStore:55` → `expected 'netease' to be 'kugou'`
@@ -167,13 +169,13 @@ APK 内仅剩 `127.0.0.1:32107/32109`（localhost，属允许类），**无任�
 - `audioNative/api/router.js` 覆盖 60+ 条 `/api/*` 路由：三源音源、歌词、封面、
   `/api/audio`（走内部 `proxyFetch`，含 Range/referer）、beatmap、weather、podcast 等。
 
-### 发现 1（安全）：那个 IP 是公网地址，且已推送到 GitHub（处置见第六节）
-`<redacted-host>` **不是内网地址**——`ipaddress` 判定 `is_global=True`（RFC1918 才会是 private）。
-三个端口分别暴露 API / QQ API / 歌词代理。
+### 发现 1（安全）：那些端口映射服务是**公网可达**的，且已推送到 GitHub（处置见第六节）
+`.env` 里三个变量指向同一台机器的三个端口；结合 `.monkeycode/MEMORY.md` 可确认：
+后端跑在一台闲置安卓手机（Termux），经 **mefrp 内网穿透**暴露到公网
+（本地 3000/3200/3400 各自映射一条隧道端口；**具体端口号已按安全要求从文档移除**）。
 - 引入：`60711ba`（**已推送，`origin/main` 就在该提交**）
 - 移除：`fa5112c`（本次，尚未推送）
-→ 远程仓库历史里仍可检索到该地址与端口。若这些服务仍在运行，等于公开了入口位置。
-处置需重写历史并 force push（破坏性，需确认）。
+→ 远程仓库历史里仍可检索到该地址与端口，故需重写历史并 force push（破坏性，已执行）。
 
 ### 发现 2（功能缺口）：AI 智能配色在 Android 上不可用（处置见第六节）
 - `src/services/gemini.ts:31,70`：`fetch('/api/generate-theme')` —— **同源相对路径**。

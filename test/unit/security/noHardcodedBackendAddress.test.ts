@@ -24,10 +24,10 @@ const SKIP_DIRS = new Set([
 ]);
 const TEXT_EXT = new Set(['.env', '.example', '.local', '.android', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.md']);
 
-// RFC1918 / 环回 / 链路本地：属于「本地开发地址」，允许出现（README、注释里说明用途）。
-const LOCAL_ADDRESS = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)/;
+// RFC1918 / 环回 / 链路本地 / RFC5737 文档段：属于「本地或示例地址」，允许出现。
+const LOCAL_ADDRESS = /https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+|192\.0\.2\.\d+|198\.51\.100\.\d+|203\.0\.113\.\d+)/;
 // 其余带端口的公网 IP 字面量：视为「硬编码的外部后端」。
-const HARDCODED_PUBLIC = /https?:\/\/(?!(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.))\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?/g;
+const HARDCODED_PUBLIC = /https?:\/\/(?!(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.0\.2\.|198\.51\.100\.|203\.0\.113\.))\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?/g;
 
 const collectFiles = (dir: string, out: string[] = []): string[] => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

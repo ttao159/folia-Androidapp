@@ -72,7 +72,7 @@ Entries discovered by the Agent during task execution should follow this format:
   - 后端部署在闲置安卓手机 Termux（无云服务器），进程用 tmux 会话保活（`nohup` 关终端即被回收）
   - Termux 后端路径与端口：netease `/data/data/com.termux/files/home/netease-api`（3000）、qq `/data/data/com.termux/files/home/qq-api`（3200）、lyric-proxy `/data/data/com.termux/files/usr/lyric-proxy`（3400）
   - 公网通过 mefrp 暴露：先在 `mefrp.com` 控制台创建 TCP 隧道，再启动 frpc；frpc 命令需带 `tcp` 子命令，远程端口约需 ≥30000（过小报 `端口不在允许范围内`）
-  - mefrp 端口映射：netease 3000→<redacted-port>、qqmusic 3200→<redacted-port>、lyricproxy 3400→<redacted-port>；若报 `隧道当前在线` 需在控制台「强制下线」，报 `隧道已禁用` 需在控制台启用
+  - mefrp 端口映射：本地 3000/3200/3400 各自映射到一条公网 TCP 隧道端口（**具体端口号已按安全要求从文档移除，请以 mefrp 控制台为准**）；若报 `隧道当前在线` 需在控制台「强制下线」，报 `隧道已禁用` 需在控制台启用
   - 手机用 ZeroTermux（hanxinhao000/ZeroTermux，Termux 改版，默认清华/北航国内源），内置「定时任务」和「开机启动」
   - 开机自启执行 `~/.xinhao_history/start_command.sh`（不是官方 Termux:Boot 的 `~/.termux/boot/`）；该脚本须显式 `export PATH=/data/data/com.termux/files/usr/bin:...` 和 `export HOME=/data/data/com.termux/files/home`，否则开机时环境不完整、tmux/node 找不到而静默失败
   - 开机脚本建议把输出重定向到日志（如 `~/.xinhao_history/boot.log`）便于排查
