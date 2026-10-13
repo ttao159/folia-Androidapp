@@ -97,6 +97,9 @@ const getWebSessionCookie = (): string => {
 };
 
 export const hasKugouAuthenticatedSearchSession = (): boolean => {
+    // 内置桥把酷狗凭据存在原生 cookie 罐里，渲染层拿不到 cookie 串；
+    // 只查 localStorage 会永远判定「未登录」，被迫退回匿名搜索（拿不到账号曲库/收藏）。
+    if (isFoliaExtensionBridgeConfigured(getWebApiBase())) return true;
     // Electron keeps the reusable token/dfid in the encrypted main-process bridge. The account id
     // is only a non-secret hint that lets this synchronous selector choose authenticated search.
     if (typeof window !== 'undefined' && window.electron?.kugouRequest) {

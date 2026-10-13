@@ -108,7 +108,13 @@ const tokenFromCookieString = (cookie: string): string => {
 // `Access-Control-Allow-Origin: *`，按规范不允许搭配 credentials。
 const isSameOriginBase = (base: string): boolean => base.startsWith('/');
 
-export const hasQqSession = (): boolean => Boolean(getWebSessionCookie());
+// 内置桥把 QQ 凭据存在**原生 cookie 罐**里，不会回写到 localStorage：
+// folia.js 归一化 login_qr_check 时返回的是 `cookie: ''`（真实 cookie 由桥侧
+// saveProviderCookie 落地）。所以只查 localStorage 会永远判定「未登录」——
+// 症状就是扫码已确认、App 里却读不到。桥已配置即视为持有扩展会话。
+export const hasQqExtensionSession = (): boolean => isFoliaExtensionBridgeConfigured(getWebApiBase());
+
+export const hasQqSession = (): boolean => hasQqExtensionSession() || Boolean(getWebSessionCookie());
 
 export const clearQqSession = (): void => removeProviderSessionValue('qq', 'cookie');
 

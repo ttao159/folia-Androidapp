@@ -425,4 +425,11 @@ export const installAudioNativeCore = async (): Promise<void> => {
     extId: 'folia-native-android',
   });
   flushQueuedRequests();
+
+  // 现场排查用：原生插件注册失败时这里**不会有任何输出**，而音源会表现为「不可用」，
+  // 很难与「没配后端」区分。打印一行就够定位（adb logcat / chrome://inspect 可见）。
+  const capacitor = (window as any).Capacitor;
+  console.info(
+    `[FoliaNativeBridge] armed version=${BRIDGE_VERSION} platform=${capacitor?.getPlatform?.() ?? 'unknown'} hosts=${API_HOSTS.length}`,
+  );
 };

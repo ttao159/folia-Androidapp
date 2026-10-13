@@ -202,4 +202,24 @@ describe('transport → 原生桥 接线', () => {
         expect(getKugouTransportAvailability().configured).toBe(true);
         expect(getQqTransportAvailability().configured).toBe(true);
     });
+
+    // 回归：QQ 扫码「手机上确认成功了，App 里读不到」。
+    // 内置桥把凭据落在原生 cookie 罐，folia.js 归一化 login_qr_check 时返回的是 `cookie: ''`，
+    // 因此 localStorage 里永远不会有 qq cookie；若 hasQqSession 只查 localStorage，
+    // 界面就会一直显示未登录。桥已配置即应视为持有会话。
+    it('QQ：桥已配置时视为持有会话（localStorage 里没有 cookie 也要成立）', async () => {
+        const { hasQqSession, hasQqExtensionSession } = await import('@/services/onlineMusic/qqTransport');
+
+        expect(hasQqExtensionSession()).toBe(true);
+        // 前提校验：确认 localStorage 里确实没有 qq cookie，否则这条测试会因别的原因通过。
+        expect((globalThis as any).localStorage.getItem('qq_cookie')).toBeNull();
+        expect(hasQqSession()).toBe(true);
+    });
+
+    // 同类回归：酷狗凭据同样只在原生罐里，判定不到就会静默退回匿名搜索
+    // （表现为能搜到歌但拿不到账号曲库/收藏）。
+    it('酷狗：桥已配置时视为已认证搜索会话', async () => {
+        const { hasKugouAuthenticatedSearchSession } = await import('@/services/onlineMusic/kugouTransport');
+        expect(hasKugouAuthenticatedSearchSession()).toBe(true);
+    });
 });
