@@ -269,6 +269,45 @@ VITE_NETEASE_API_BASE / VITE_QQ_API_BASE / VITE_LYRIC_PROXY_BASE  ->  开发机�
   ```
 - `.build-tools/`（工作区内的下载缓存）**不要提交**。
 
+## 七之二、真机验证进展 —— 2026-10-13
+
+APK 已构建并放置到 `/sdcard/Download/folia-bridge-debug.apk`（宿主能力域**没有**安装 APK 的工具，
+需手动安装）。设备：Shizuku 可用（shell UID 2000），无 Root。
+
+### 已确认
+- ✅ **QQ 扫码登录可用**（真机验证通过）
+- ✅ 启动诊断日志在设备上可见：`[FoliaNativeBridge] armed version=android-0.1.0 platform=android hosts=15`
+
+### 本次修复（提交 `9670338`）
+症状：QQ 扫码「手机确认成功」，App 内仍显示未登录。
+根因：内置桥把凭据存**原生 cookie 罐**，不回写 localStorage —— `folia.js` 归一化
+`login_qr_check` 返回 `{ code: 803, cookie: '' }`（真实 cookie 由桥侧 `saveProviderCookie` 落地），
+而 `qqProvider` / `persistConfirmedSession` 都是 `if (typeof cookie === 'string' && cookie)`，
+空串被跳过 ⇒ localStorage 永远没有 qq cookie。
+**漏搬的是辅助函数**（参考仓有而我们没有）：
+```ts
+hasQqExtensionSession() = isFoliaExtensionBridgeConfigured(getWebApiBase())
+hasQqSession()          = hasQqExtensionSession() || Boolean(getWebSessionCookie())
+```
+同类缺口一并修：`hasKugouAuthenticatedSearchSession` 少了桥判断
+→ 会静默退回匿名搜索（能搜到歌但拿不到账号曲库/收藏）。
+
+教训：上一轮判断「QQ 传参与参考仓逐字一致」时**只比了传输层**，没比这类辅助函数。
+后续已做一次**全量导出符号比对**（qqTransport / kugouTransport），确认无第三个同类缺口。
+
+### 待验证（下次继续）
+1. 酷狗扫码登录（同批修复）
+2. 网易云扫码登录
+3. 搜索 + 播放
+4. **QQ / 酷狗的歌词与封面**（本轮新加 `y.gtimg.cn` / `kgimg.com` /
+   `amll-ttml-db.stevexmh.net` 到 `API_HOSTS`；**仅验证过构建，未验证运行时**）
+
+### Backlog（不影响当前可用性，来自符号比对）
+| 符号 | 用途 |
+|---|---|
+| `requestKugouLegacyPlayInfo` | 旧版播放信息回退（老歌可能取不到播放地址时用） |
+| `getQqRemoteApiBase` | QQ 登录自检 / 诊断面板 |
+
 ## 八、待决策（阻塞，需问用户）
 
 - **汽水音乐**：参考仓无实现、本仓库无后端源码 → 无法随 A 一起上设备。
