@@ -120,7 +120,44 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 `QISHUI=`（不提供）/ `LYRIC_PROXY=`（见下）。
 验证：`npm run build:android` 后 `dist/` 内**已无该内网 IP**，注入值逐项核对正确。
 
-### C. 内网地址已彻底移除（"取消内网"）
+## 五、审计发现（"还有什么"）—— 2026-10-13
+
+> 注：下方「发现 1/2/3」是审计结论；「C. 内网地址已彻底移除」属于上一节（"取消内网"）的交付说明。
+
+### 核查为正常的项
+- `dist/` 未被 git 跟踪；产物内已无开发机地址（APK 内网 IP 命中数 = 0）。
+- `VITE_*` 注入值正确（NETEASE 空 / QQ·KUGOU=extension / LYRIC_PROXY 空）。
+- 源码里的 `localhost` / `127.0.0.1` 均为合法用途（Electron OBS 集成、Navidrome
+  服务器地址用户自填、歌词 API 本地端口），**不是**被误打包的开发配置。
+- `audioNative/api/router.js` 覆盖 60+ 条 `/api/*` 路由：三源音源、歌词、封面、
+  `/api/audio`（走内部 `proxyFetch`，含 Range/referer）、beatmap、weather、podcast 等。
+
+### 发现 1（安全，需决策）：那个 IP 是公网地址，且已推送到 GitHub
+`<redacted-host>` **不是内网地址**——`ipaddress` 判定 `is_global=True`（RFC1918 才会是 private）。
+三个端口分别暴露 API / QQ API / 歌词代理。
+- 引入：`60711ba`（**已推送，`origin/main` 就在该提交**）
+- 移除：`fa5112c`（本次，尚未推送）
+→ 远程仓库历史里仍可检索到该地址与端口。若这些服务仍在运行，等于公开了入口位置。
+处置需重写历史并 force push（破坏性，需确认）。
+
+### 发现 2（功能缺口）：AI 智能配色在 Android 上不可用
+- `src/services/gemini.ts:31,70`：`fetch('/api/generate-theme')` —— **同源相对路径**。
+- `router.js` **未**覆盖该路由 → 内置桥不接管。
+- Android 无同源后端 → Capacitor 下打到本地资源服务器 → 404。
+- 用户可见行为：`useThemeController` 捕获后 `isMissingAiApiKeyError` 判定失败
+  （不是缺 key 的错误），最终提示 `status.themeGenerationFailed`（"主题生成失败"）。
+- **参考仓代码完全相同、同样缺失** → 属两个仓库共有的缺口，非本次移植引入。
+- 根因（推测，合理但未逐个确认）：AI key 是服务端变量（`GEMINI_API_KEY` / `OPENAI_API_KEY`，
+  无 `VITE_` 前缀），设计上刻意不打包进客户端；而移动端没有部署那层后端。
+- 而 README 把「AI 智能配色，自动生成主题」列为**首条卖点**；既有规范
+  `.monkeycode/specs/.../android-build.md` 只把「AI **人声分离**」列为移动端降级，
+  未提 AI 配色 → 存在预期落差。
+
+### 发现 3（既有，与本次改动无关）
+`npm test` 仍有 7~9 个失败，均已用改动前基线确认同集合：
+appDatabaseMigration×2、localMusicService×2、onlineProviderAccountStore、tuningRegistry、
+themeSyncRegistry×2（时序 flaky，单独跑通过）。
+
 `.env` 原先被 git 跟踪，且指向开发机内网：
 ```
 VITE_NETEASE_API_BASE / VITE_QQ_API_BASE / VITE_LYRIC_PROXY_BASE  ->  开发机内网地址
