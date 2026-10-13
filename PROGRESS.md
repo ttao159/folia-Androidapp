@@ -90,7 +90,7 @@
    netease 在 base 未配置时也走桥；kugou/qq 在 `runtime hostname === 'extension'` 时走桥。
    若要显式强制走桥，需在构建环境设 `VITE_NETEASE_API_BASE=extension` 等。
 
-## 四点五、本轮追加（"怎样更好"）——测试 + 激活修复
+## 四、本轮追加（"怎样更好"）——测试 + 激活修复
 
 ### A. 契约测试（新增 12 个，全绿）
 背景：`src/audioNative/**/*.js` 是纯 JS，`tsconfig` 只开 `allowJs`（解析、**不做类型检查**），
@@ -120,9 +120,44 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 `QISHUI=`（不提供）/ `LYRIC_PROXY=`（见下）。
 验证：`npm run build:android` 后 `dist/` 内**已无该内网 IP**，注入值逐项核对正确。
 
-## 五、审计发现（"还有什么"）—— 2026-10-13
+## 六、审计处置（"你决定"）—— 2026-10-13
 
-> 注：下方「发现 1/2/3」是审计结论；「C. 内网地址已彻底移除」属于上一节（"取消内网"）的交付说明。
+### 已做
+1. **防复发守卫**（最有价值的产出）：`test/unit/security/noHardcodedBackendAddress.test.ts`
+   - 扫描仓库内 `.env*` 与源码，禁止出现硬编码的**公网**后端地址
+     （RFC1918 / localhost / 链路本地放行；私网与公网按 `ipaddress` 同口径区分）
+   - 附带断言 `.env` 未被 git 跟踪
+   - **已做变异验证**：注入 `http://93.184.216.34:8080` 后测试立刻变红并精确报出文件行号
+   - 为什么重过重写历史：重写只清一次、且对已 fork/clone 的人无效；
+     守卫对**此后每一次提交**生效。
+2. **AI 配色在原生壳内收敛**：
+   - 新增 `isAiThemeEndpointUnavailableError`（识别 HTTP 404/405、HTML 响应）
+   - `useThemeController` 复用它，走**已有的** cover 派生兜底（与「缺 key」同路径），
+     不再对用户弹「主题生成失败」
+   - `gemini.ts` 的错误信息带上状态码，便于区分「后端未部署」与「后端业务报错」
+   - 新增 `test/unit/services/aiThemeEndpointAvailability.test.ts`（4）
+3. **抽出 `src/services/runtimePlatform.ts`**：把重复在 5 处的「原生壳」判定集中一处
+   （含我曾复制进的 `audioNativeInstaller`），并使降级条件与 shim 安装条件同源。
+
+### 明确不做
+4. **不重写 git 历史**：破坏性、影响已合并的 PR；且清历史**不解决**真实风险
+   （轮换/下线那些服务才解决）。已在审计节记录该地址仍可从远程历史检索到。
+5. **不修既有失败测试**：诊断结论是确定性逻辑漂移，非 flaky、与本轮无关：
+   - `appDatabaseMigration:82,123` → `expected 1 to be 0.9`
+   - `onlineProviderAccountStore:55` → `expected 'netease' to be 'kugou'`
+   - `localMusicService`×2、`tuningRegistry`×1
+   （`themeSyncRegistry`×2 确认为时序 flaky，稳定复现时需要隔离 IndexedDB 时序。）
+   不了解设计意图就改会掩盖真实回归，留作独立任务。
+
+### 验证
+`tsc` 通过；`npm test` → **2518 passed / 6 failed（全部在原基线集合内，零新增）**；
+`vite build --mode android` + `assembleDebug` → **BUILD SUCCESSFUL**；
+APK 内仅剩 `127.0.0.1:32107/32109`（localhost，属允许类），**无任何后端地址**。
+
+
+## 七、审计发现（"还有什么"）—— 2026-10-13
+
+> 「发现 1/2/3」是审计**结论**（问题在哪）；上方第六节是**处置**（怎么处理的）。
 
 ### 核查为正常的项
 - `dist/` 未被 git 跟踪；产物内已无开发机地址（APK 内网 IP 命中数 = 0）。
@@ -132,7 +167,7 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 - `audioNative/api/router.js` 覆盖 60+ 条 `/api/*` 路由：三源音源、歌词、封面、
   `/api/audio`（走内部 `proxyFetch`，含 Range/referer）、beatmap、weather、podcast 等。
 
-### 发现 1（安全，需决策）：那个 IP 是公网地址，且已推送到 GitHub
+### 发现 1（安全）：那个 IP 是公网地址，且已推送到 GitHub（处置见第六节）
 `<redacted-host>` **不是内网地址**——`ipaddress` 判定 `is_global=True`（RFC1918 才会是 private）。
 三个端口分别暴露 API / QQ API / 歌词代理。
 - 引入：`60711ba`（**已推送，`origin/main` 就在该提交**）
@@ -140,7 +175,7 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 → 远程仓库历史里仍可检索到该地址与端口。若这些服务仍在运行，等于公开了入口位置。
 处置需重写历史并 force push（破坏性，需确认）。
 
-### 发现 2（功能缺口）：AI 智能配色在 Android 上不可用
+### 发现 2（功能缺口）：AI 智能配色在 Android 上不可用（处置见第六节）
 - `src/services/gemini.ts:31,70`：`fetch('/api/generate-theme')` —— **同源相对路径**。
 - `router.js` **未**覆盖该路由 → 内置桥不接管。
 - Android 无同源后端 → Capacitor 下打到本地资源服务器 → 404。
@@ -197,14 +232,14 @@ VITE_NETEASE_API_BASE / VITE_QQ_API_BASE / VITE_LYRIC_PROXY_BASE  ->  开发机�
   ```
 - `.build-tools/`（工作区内的下载缓存）**不要提交**。
 
-## 四、待决策（阻塞，需问用户）
+## 八、待决策（阻塞，需问用户）
 
 - **汽水音乐**：参考仓无实现、本仓库无后端源码 → 无法随 A 一起上设备。
   建议：本轮只让 网易云/QQ/酷狗 三源走桥；汽水保留原「外部 base URL」路径。
   若要连汽水一起设备化，需要另写 `audioNative/api/qishui.js`（新工作，等于自研音源协议）。
 - 参考仓第 4 个源是**波点（bodian）**，本项目没有该 provider。是否顺带引入？建议不引入（超出 A 范围）。
 
-## 五、关键文件位置
+## 九、关键文件位置
 - 参考仓：`/tmp/folia-ref`（base 访问）
 - 桥协议：`/tmp/folia-ref/src/services/foliaExtensionBridge.ts`、`audioNativeInstaller.ts`、
   `/tmp/folia-ref/src/audioNative/api/folia.js`（请求路由）

@@ -12,6 +12,8 @@
 // are running inside a browser extension while all privileged work is delegated
 // to the native Capacitor plugin.
 
+import { isNativeShell } from './runtimePlatform';
+
 const PAGE_SOURCE = 'folia-web-page';
 const BRIDGE_SOURCE = 'folia-extension-bridge';
 const BRIDGE_VERSION = 'android-0.1.0';
@@ -398,8 +400,8 @@ const installMessageBridge = () => {
 
 export const installAudioNativeCore = async (): Promise<void> => {
   if (typeof window === 'undefined') return;
-  const capacitor = (window as any).Capacitor;
-  if (!capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() !== 'android') return;
+  // 统一的壳内判定（与 lyricProxyBase / gemini 的降级条件同源）。
+  if (!isNativeShell()) return;
 
   const plugin = getPlugin();
   if (!plugin) {

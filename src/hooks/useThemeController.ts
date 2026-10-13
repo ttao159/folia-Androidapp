@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { generateThemeFromLyrics, isMissingAiApiKeyError } from '../services/gemini';
+import { generateThemeFromLyrics, isAiThemeEndpointUnavailableError, isMissingAiApiKeyError } from '../services/gemini';
 import { saveToCache } from '../services/db';
 import { DualTheme, LyricData, SongResult, StatusMessage, Theme, ThemeMode } from '../types';
 import { getCachedThemeState, getCachedThemeStateForSong, getLastDualTheme, getLastLegacyTheme, type ThemeCacheSongKey } from '../services/themeCache';
@@ -672,6 +672,16 @@ export function useThemeController({
         } catch (error: unknown) {
             console.error(error);
             if (isMissingAiApiKeyError(error)) {
+                return await applyCoverDerivedTheme(
+                    currentSong,
+                    () => options.shouldApply?.() ?? true,
+                    'fallback',
+                );
+            }
+
+            // 原生壳没有同源 AI 后端（/api/generate-theme 会 404），这与「缺 key」一样
+            // 都不是用户能修的问题：同样退回封面派生配色，而不是报「主题生成失败」。
+            if (isAiThemeEndpointUnavailableError(error)) {
                 return await applyCoverDerivedTheme(
                     currentSong,
                     () => options.shouldApply?.() ?? true,

@@ -1,5 +1,7 @@
 // src/services/lyricProxyBase.ts
 
+import { isNativeShell } from './runtimePlatform';
+
 // 封面 / 歌词的跨域转发入口。
 //
 // 相对路径 `/api/lyric-proxy` 依赖同源后端（Docker gateway / Vercel）；手机 App（Capacitor）
@@ -9,15 +11,6 @@
 // （y.gtimg.cn / kgimg.com / amll-ttml-db.stevexmh.net，见 API_HOSTS）交给原生 OkHttp 请求，
 // 不受 CORS 限制。因此**原生壳内直接返回原始 URL**，既不拼代理、也不需要任何外部地址。
 // Web / Electron 行为保持不变（它们仍有同源后端或本地端口）。
-const isNativeShell = (): boolean => {
-    if (typeof window === 'undefined' || !window) return false;
-    const capacitor = (window as typeof window & {
-        Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
-    }).Capacitor;
-    // 与 installAudioNativeCore 的启用条件保持一致——只有壳内才会装 fetch shim，
-    // 条件若不一致，就会出现「跳过了代理、shim 又没装」的双输局面。
-    return Boolean(capacitor?.isNativePlatform?.()) || capacitor?.getPlatform?.() === 'android';
-};
 
 const getLyricProxyBase = (): string => {
     const viteValue = typeof import.meta !== 'undefined' && import.meta.env?.MODE !== 'test'
