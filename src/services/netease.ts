@@ -1,5 +1,10 @@
 import { NeteaseUser, NeteasePlaylist, NoCopyrightRecommendation, SongPrivilege, SongResult } from "../types";
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from './onlineMusic/providerStorage';
+import {
+  isFoliaExtensionBridgeAvailable,
+  isFoliaExtensionBridgeConfigured,
+  requestFoliaExtension,
+} from './foliaExtensionBridge';
 import type { PersonalFmRequestOptions } from '../types/onlineMusic';
 
 type UnavailableSongReplacement = {
@@ -55,6 +60,35 @@ const getApiBase = async () => {
 };
 
 const fetchWithCreds = async (endpoint: string, options: RequestInit = {}) => {
+  const configuredApiBase = getConfiguredApiBase();
+  const extensionConfigured = isFoliaExtensionBridgeConfigured(configuredApiBase);
+
+  // 安卓内置桥：音源协议在设备内实现（audioNative），原生层只做 OkHttp + Cookie。
+  // base 未配置时也走桥，手机上无需任何外部后端。
+  if (!isElectronRuntime() && (extensionConfigured || !configuredApiBase)) {
+    const bridgeAvailable = await isFoliaExtensionBridgeAvailable();
+    if (bridgeAvailable) {
+      const target = new URL(endpoint, 'https://folia.local');
+      const query = Object.fromEntries(target.searchParams.entries());
+      const response = await requestFoliaExtension<Record<string, any>>({
+        provider: 'netease',
+        operation: target.pathname,
+        path: target.pathname,
+        method: options.method || 'GET',
+        query,
+        body: options.body,
+        headers: Object.fromEntries(new Headers(options.headers || {}).entries()),
+      });
+      if (response?.__foliaBridgeError) {
+        throw new Error(response.message || response.__foliaBridgeError);
+      }
+      return response;
+    }
+    if (extensionConfigured) {
+      throw new Error('NETEASE_API_UNAVAILABLE');
+    }
+  }
+
   const base = await getApiBase();
   const url = `${base}${endpoint}`;
   // Ensure we send credentials to persist session (cookies)

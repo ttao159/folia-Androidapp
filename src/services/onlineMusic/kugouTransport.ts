@@ -2,6 +2,10 @@ import md5 from 'blueimp-md5';
 import { OnlineProviderError } from '../../types/onlineMusic';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from './providerStorage';
 import { buildLyricProxyUrl } from '../lyricProxyBase';
+import {
+    isFoliaExtensionBridgeConfigured,
+    requestFoliaExtension,
+} from '../foliaExtensionBridge';
 
 // src/services/onlineMusic/kugouTransport.ts
 
@@ -214,8 +218,41 @@ const persistElectronAccountHint = (operation: KugouOperation, response: any): v
     if (userId) writeProviderSessionValue('kugou', 'userid', String(userId));
 };
 
+/**
+ * 从桥响应里读账号 id。
+ *
+ * 内置桥返回扁平结构（`userId`，见 audioNative/api/kugou.js），托管 KuGouMusicApi 把同一值
+ * 嵌在 `data.userid`，`user_detail` 又把资料包在 `data.user_info` 下。只检查这几种形状，
+ * 避免把搜索结果里的歌曲 id 误当账号写进会话。
+ */
+const readBridgeAccountId = (response: any): string => {
+    const profile = response?.data?.user_info;
+    const candidate = response?.userId ?? response?.userid ?? response?.user_id
+        ?? profile?.userid ?? profile?.user_id;
+    return candidate === undefined || candidate === null ? '' : String(candidate).trim();
+};
+
+/** 桥调用失败时归一到 provider 错误；已是 OnlineProviderError 则原样透出。 */
+const toKugouProviderError = (operation: KugouOperation, error: unknown): OnlineProviderError => (
+    error instanceof OnlineProviderError
+        ? error
+        : new OnlineProviderError(
+            'network',
+            `KuGou bridge request failed (operation=${operation}): ${error instanceof Error ? error.message : String(error)}`,
+            'kugou',
+            error,
+        )
+);
+
+/** 桥把可复用凭据放在自己的 Cookie jar 里，渲染层只需要账号 id 这一条非密线索。 */
+const persistBridgeAccountHint = (response: any): void => {
+    const userId = readBridgeAccountId(response);
+    if (userId) writeProviderSessionValue('kugou', 'userid', userId);
+};
+
 export const getKugouTransportAvailability = () => {
     if (typeof window !== 'undefined' && window.electron?.kugouRequest) return { configured: true } as const;
+    if (isFoliaExtensionBridgeConfigured(getWebApiBase())) return { configured: true } as const;
     return getWebApiBase()
         ? { configured: true } as const
         : { configured: false, reason: 'not-configured' as const };
@@ -237,6 +274,31 @@ export const requestKugou = async <T = unknown>(operation: KugouOperation, param
     const base = getWebApiBase();
     if (!base) {
         throw new OnlineProviderError('unavailable', 'VITE_KUGOU_API_BASE is not configured', 'kugou');
+    }
+    if (isFoliaExtensionBridgeConfigured(base)) {
+        // 安卓内置桥：请求协议由设备内的 audioNative 实现，原生层只负责 OkHttp + Cookie。
+        try {
+            const body = await requestFoliaExtension<any>({
+                provider: 'kugou',
+                operation,
+                method: 'GET',
+                params,
+            });
+            if (body?.__foliaBridgeError) {
+                if (body.__foliaBridgeError === 'AUTH_REQUIRED') {
+                    throw new OnlineProviderError('auth-required', body.message || 'KuGou login required', 'kugou', body);
+                }
+                if (body.__foliaBridgeError === 'UNSUPPORTED') {
+                    throw new OnlineProviderError('unsupported', body.message || `KuGouMusicApi has no ${operation} route`, 'kugou', body);
+                }
+                throw new OnlineProviderError('network', body.message || body.__foliaBridgeError, 'kugou', body);
+            }
+            persistBridgeAccountHint(body);
+            return body as T;
+        } catch (error) {
+            if (error instanceof OnlineProviderError) throw error;
+            throw toKugouProviderError(operation, error);
+        }
     }
     const execute = async (targetOperation: KugouOperation, targetParams: KugouParams): Promise<any> => {
         const query = new URLSearchParams();

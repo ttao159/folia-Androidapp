@@ -1,5 +1,9 @@
 import { OnlineProviderError } from '../../types/onlineMusic';
 import { readProviderSessionValue, removeProviderSessionValue, writeProviderSessionValue } from './providerStorage';
+import {
+    isFoliaExtensionBridgeConfigured,
+    requestFoliaExtension,
+} from '../foliaExtensionBridge';
 
 // src/services/onlineMusic/qqTransport.ts
 
@@ -158,6 +162,7 @@ const persistConfirmedSession = (operation: QqOperation, body: any): void => {
 
 export const getQqTransportAvailability = () => {
     if (getElectronQqPortReader()) return { configured: true } as const;
+    if (isFoliaExtensionBridgeConfigured(getWebApiBase())) return { configured: true } as const;
     return getWebApiBase()
         ? { configured: true } as const
         : { configured: false, reason: 'not-configured' as const };
@@ -202,6 +207,33 @@ export const requestQq = async <T = unknown>(operation: QqOperation, params: QqP
     const base = await resolveApiBase();
 
     const endpoint = endpointFor(operation, params);
+    if (isFoliaExtensionBridgeConfigured(base)) {
+        // 安卓内置桥：协议由设备内 audioNative 实现，原生层只做 OkHttp + Cookie。
+        try {
+            const body = await requestFoliaExtension<any>({
+                provider: 'qq',
+                operation,
+                method: 'GET',
+                path: endpoint.path,
+                params: endpoint.query,
+            });
+            if (body?.__foliaBridgeError) {
+                if (body.__foliaBridgeError === 'AUTH_REQUIRED') {
+                    throw new OnlineProviderError('auth-required', body.message || 'QQMusicApi login required', 'qq', body);
+                }
+                if (body.__foliaBridgeError === 'UNSUPPORTED') {
+                    throw new OnlineProviderError('unsupported', body.message || `QQMusicApi has no ${operation} route`, 'qq', body);
+                }
+                throw new OnlineProviderError('network', body.message || body.__foliaBridgeError, 'qq', body);
+            }
+            persistConfirmedSession(operation, body);
+            return body as T;
+        } catch (error) {
+            if (error instanceof OnlineProviderError) throw error;
+            throw new OnlineProviderError('network', error instanceof Error ? error.message : String(error), 'qq', error);
+        }
+    }
+
     const query = new URLSearchParams();
     Object.entries(endpoint.query).forEach(([key, value]) => {
         if (value !== undefined) query.set(key, String(value));
