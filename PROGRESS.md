@@ -78,7 +78,14 @@
    已核验 APK 内含：`FoliaCorePlugin`（classes9.dex）、`okhttp3`（classes.dex/9）、
    `assets/public/assets/folia-*.js`（设备内音源协议）。
 5. ✅ **提交**：`e02e909`（+ 本进度文件）。
-6. ⬜ **qishui 通道决策**（见下，阻塞）。
+6. ✅ **汽水通道决策：保留现状（选项①）**。已核实是**零代码改动**即成立：
+   - `audioNativeInstaller` 的 fetch shim 只拦截白名单 `API_HOSTS`
+     （163 / qq / kugou / kuwo / weixin / qrserver），**不含任何汽水域名**
+     → 汽水请求原样走 `originalFetch`，未被桥劫持。
+   - `getQishuiTransportAvailability()`：base 未配置时返回
+     `{configured:false, reason:'not-configured'}` → 入口隐藏（不报错），行为与改动前一致。
+   - `.env.example` 已补充：`extension` 语义、各 provider 实际判定、汽水不在桥内（并补了缺失的
+     `VITE_KUGOU_API_BASE` 条目）。提交 `0014813`。
 7. ⬜ **vite env**：`VITE_*_API_BASE=extension` 尚未写入配置。当前逻辑：
    netease 在 base 未配置时也走桥；kugou/qq 在 `runtime hostname === 'extension'` 时走桥。
    若要显式强制走桥，需在构建环境设 `VITE_NETEASE_API_BASE=extension` 等。
