@@ -90,7 +90,46 @@
    netease 在 base 未配置时也走桥；kugou/qq 在 `runtime hostname === 'extension'` 时走桥。
    若要显式强制走桥，需在构建环境设 `VITE_NETEASE_API_BASE=extension` 等。
 
-### 本机构建环境（下次直接复用）
+## 四点五、本轮追加（"怎样更好"）——测试 + 激活修复
+
+### A. 契约测试（新增 12 个，全绿）
+背景：`src/audioNative/**/*.js` 是纯 JS，`tsconfig` 只开 `allowJs`（解析、**不做类型检查**），
+所以「接线写错」在 `tsc` 和 `gradle` 里都是绿的，只有装到手机上才炸。补了两层：
+- `test/unit/services/audioNativeBridge.test.ts`（6）：PING/PONG 握手、请求形状、
+  响应按 id 回包、未实现路由返回 `__foliaBridgeError`。
+- `test/unit/services/bridgeTransportWiring.test.ts`（6）：**transport → 桥**的接线。
+  ⚠️ 这层是必要的：初版只测桥自身时，把 transport 里的 `params` 改成 `query` 测试**照样全绿**；
+  补上这层后，同样的变异会让 2 个测试立刻变红（已实测验证）。
+
+手搓 `window` 桩（仓库约定：node 环境、无 jsdom）。两个坑记一下：
+- `vi.stubEnv` **改不动 `import.meta.env`**（Vite 编译期静态替换），且仓库的真实 `.env`
+  会被 vitest 加载——网易云的桥分支在测试里因此进不去，这是环境事实，不是缺陷。
+- `netease.ts` 用的是**裸 `fetch`**，node 下与 `window.fetch` 不是同一个，
+  必须同时指向 mock，否则会打到真实网络（初版就误连了内网地址）。
+
+### B. 激活修复（关键：不做这个，A 在手机上等于没生效）
+发现：`.env` 是**被 git 跟踪的**（`.gitignore` 只忽略 `.env*.local`），内容指向开发机内网：
+```
+VITE_NETEASE_API_BASE=http://<redacted-host>:<redacted-port>
+VITE_QQ_API_BASE=http://<redacted-host>:<redacted-port>
+VITE_LYRIC_PROXY_BASE=http://<redacted-host>:<redacted-port>
+```
+`vite build` 会把它烤进 `dist`（实测 `dist/assets/songMetadata-*.js` 里确有该 IP），
+而 `netease.ts` 的判定是 `extensionConfigured || !configuredApiBase` —— 两者都不满足，
+**桥分支永远不会进**，手机只会去连那个内网地址。
+
+修复：新增 `.env.android` + `npm run build:android`（`vite build --mode android`）。
+Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUGOU=extension` /
+`QISHUI=`（不提供）/ `LYRIC_PROXY=`（见下）。
+验证：`npm run build:android` 后 `dist/` 内**已无该内网 IP**，注入值逐项核对正确。
+
+### C. 待决：`VITE_LYRIC_PROXY_BASE`
+它服务 QQ/酷狗/**AMLL** 的歌词与封面（这些 provider 直接 fetch，不走 transport 桥）。
+参考实现是**直接删掉 `lyricProxyBase.ts`**，改为依赖原生 fetch shim（OkHttp 不受 CORS 限制）。
+本项目照做需要：把歌词/封面涉及的 CDN 域名补进 `API_HOSTS`，并让 `buildLyricProxyUrl`
+在原生端跳过代理——属独立改动，**本轮未做**，暂留空以免把内网地址打进发布包。
+（已知副作用：留空后 QQ/酷狗歌词封面会 404；酷狗的走桥路径不受影响，因 `kugou.com` 已在白名单内。）
+
 - JDK：`/usr/lib/jvm/java-21-openjdk-arm64`（apt 装的 openjdk-21-jdk-headless）
 - Android SDK：`/opt/android-sdk`（platform-36 + build-tools 36.0.0 + cmdline-tools latest）
 - Gradle：`/opt/gradle/gradle-8.14.3/bin/gradle`（**用它，不要用 `./gradlew`**——

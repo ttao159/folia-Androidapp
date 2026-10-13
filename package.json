@@ -19,6 +19,7 @@
     "dev:probe": "vite --open /dev-probe.html",
     "build": "npm run build:vercel-api && vite build",
     "build:vercel-api": "tsc -p api-ts/tsconfig.json",
+    "build:android": "npm run build:vercel-api && vite build --mode android",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run -c vitest.config.ts",
