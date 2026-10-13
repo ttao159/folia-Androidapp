@@ -65,20 +65,38 @@
 - 装好 `cmdline-tools` + `platforms;android-36` + `build-tools;36.0.0`（`/opt/android-sdk`）。
 - `npm install` 已完成（766 包，`node_modules/qrcode` 就位）。
 
-## 三、未完成 / 下一步
+## 三、状态（A 已完成并构建验证）
 
-1. **验证并修复类型错误**：`npx tsc --noEmit`（重点：`netease.ts` 的 `getConfiguredApiBase`、
-   我们的 `OnlineProviderError` 构造签名、`requestFoliaExtension` 的泛型与参数类型）。
-2. **移植 audioNativeInstaller 的依赖闭包**：它可能引用参考仓独有模块（`nativeRemoteAudio` 15 行、
-   `nativePlaybackBridge` 67 行、本地库等），需逐个补齐或裁剪（先做 import 闭包追查）。
-3. **qishui 通道决策**（见下）。
-4. **vite env**：确认/新增 `VITE_*_API_BASE` 的 `extension` 语义（`.env.example`）。
-5. **构建验证**：
-   `npm run build` → `npx cap sync android` →
-   `cd android && JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64 ANDROID_HOME=/opt/android-sdk ./gradlew assembleDebug`
-   （Gradle 版本是否支持 JDK21/AGP 需现场确认；`compileSdk` 本项目已是 36）。
-6. **测试**：`npx vitest run`（增量测试 + 全量不回归）。
-7. **提交**：按 `.monkeycode/MEMORY.md` 要求，改动后必须 git commit + 测试通过。
+1. ✅ **类型检查**：`npx tsc --noEmit` 全绿。
+2. ✅ **测试**：`npm test` → 2491 passed / 9 failed；`git stash` 基线对比确认这 9 个
+   （6 个文件：coverCache、amllDbProvider、appDatabaseMigration、localMusicService、
+   onlineProviderAccountStore、tuningRegistry）**改动前即为红**，本次零回归。
+3. ✅ **前端构建**：`npm run build` → `✓ built in 8.81s`，`dist/` 140 文件；
+   `audioNative` 已打包（`dist/assets/folia-*.js` 267KB）。
+4. ✅ **真实 APK**：`npx cap sync android` + `gradle assembleDebug` → **BUILD SUCCESSFUL**，
+   产物 `android/app/build/outputs/apk/debug/app-debug.apk`（12MB）。
+   已核验 APK 内含：`FoliaCorePlugin`（classes9.dex）、`okhttp3`（classes.dex/9）、
+   `assets/public/assets/folia-*.js`（设备内音源协议）。
+5. ✅ **提交**：`e02e909`（+ 本进度文件）。
+6. ⬜ **qishui 通道决策**（见下，阻塞）。
+7. ⬜ **vite env**：`VITE_*_API_BASE=extension` 尚未写入配置。当前逻辑：
+   netease 在 base 未配置时也走桥；kugou/qq 在 `runtime hostname === 'extension'` 时走桥。
+   若要显式强制走桥，需在构建环境设 `VITE_NETEASE_API_BASE=extension` 等。
+
+### 本机构建环境（下次直接复用）
+- JDK：`/usr/lib/jvm/java-21-openjdk-arm64`（apt 装的 openjdk-21-jdk-headless）
+- Android SDK：`/opt/android-sdk`（platform-36 + build-tools 36.0.0 + cmdline-tools latest）
+- Gradle：`/opt/gradle/gradle-8.14.3/bin/gradle`（**用它，不要用 `./gradlew`**——
+  wrapper 要联网下发行包且 networkTimeout 只有 10s，本环境会超时；
+  `gradle-wrapper.properties` 已还原为原始 url，未改动）
+- `android/local.properties` 写 `sdk.dir=/opt/android-sdk`（已被 gitignore）
+- 构建命令：
+  ```
+  cd android && JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64 \
+    ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk \
+    PATH=/opt/gradle/gradle-8.14.3/bin:$PATH gradle assembleDebug --no-daemon
+  ```
+- `.build-tools/`（工作区内的下载缓存）**不要提交**。
 
 ## 四、待决策（阻塞，需问用户）
 
