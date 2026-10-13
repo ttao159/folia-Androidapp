@@ -155,14 +155,14 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 
 ### 已执行
 1. `git filter-repo --replace-text`（含 `--message-callback`）重写**全部**历史，
-   替换 `<redacted-host>` 与三个端口号；备份在 `/tmp/git-backup`。
+   替换该地址主机与三个端口号；备份保留在 /tmp 下（验证通过后已删除）。
    验证：全历史内容/提交信息/端口命中数均为 **0**。
 2. 强制推送**三个**远程分支（都曾含泄漏）：
    `main`、`260907-fix-fusion-settings-and-screen`、`trae/agent-F3cv3o` → 全部指向干净提交。
 3. **删除 Release 与 tag**：`refs/tags/limo` 直接指向泄漏提交 `60711ba`，且挂着
    Release「Limo Nightly」——**15 个可公开下载的安装包**。
    实测验证泄漏确在二进制内：抽检 `folia-major-...linux-x86_64.rpm`，
-   解压 xz 载荷（860MB）后命中 `<redacted-host>`×5、`<redacted-port>`×13、`<redacted-port>`×22、`<redacted-port>`×3。
+   解压 xz 载荷（860MB）后：主机地址命中 5 次、三个端口号分别命中 13 / 22 / 3 次。
    已 `gh release delete limo --yes` 并删除该 tag。
 4. 工作区清理：`.monkeycode/MEMORY.md` 的具体端口号、`PROGRESS.md` 中的 IP 均已移除
    （守卫的 RFC5737 文档段放行是为此配套）。
