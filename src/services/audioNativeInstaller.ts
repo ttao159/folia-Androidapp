@@ -47,6 +47,12 @@ const API_HOSTS = [
   'kugou.com',
   'kuwo.cn',
   'api.qrserver.com',
+  // 封面 CDN：QQ 的 y.gtimg.cn 与酷狗的 kgimg.com 都要经原生代理取二进制，
+  // 否则 WebView 里跨域会被 CORS 拦掉（原先靠 lyric-proxy 转发，Android 上无同源后端）。
+  'y.gtimg.cn',
+  'kgimg.com',
+  // AMLL TTML 歌词库：官方只提供跨域裸接口，设备上同样需要走原生代理。
+  'amll-ttml-db.stevexmh.net',
 ];
 
 type NativePlugin = {

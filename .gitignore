@@ -24,7 +24,12 @@ dist-ssr
 *.sw?
 
 .vercel
+# 本地环境变量：一律不入库（此前只忽略了 .env*.local，导致 .env 被跟踪、
+# 里面的开发机内网地址被 vite 烤进发布产物）。
+.env
 .env*.local
+!.env.example
+!.env.android
 
 dev-dist/
 example/

@@ -108,12 +108,9 @@
   必须同时指向 mock，否则会打到真实网络（初版就误连了内网地址）。
 
 ### B. 激活修复（关键：不做这个，A 在手机上等于没生效）
-发现：`.env` 是**被 git 跟踪的**（`.gitignore` 只忽略 `.env*.local`），内容指向开发机内网：
-```
-VITE_NETEASE_API_BASE=http://<redacted-host>:<redacted-port>
-VITE_QQ_API_BASE=http://<redacted-host>:<redacted-port>
-VITE_LYRIC_PROXY_BASE=http://<redacted-host>:<redacted-port>
-```
+发现：`.env` 是**被 git 跟踪的**（`.gitignore` 只忽略 `.env*.local`），内容指向开发机内网
+（`VITE_NETEASE_API_BASE` / `VITE_QQ_API_BASE` / `VITE_LYRIC_PROXY_BASE` 三个变量，
+均为 `http://<内网IP>:<端口>` 形式，详见下节 C 的处置）：
 `vite build` 会把它烤进 `dist`（实测 `dist/assets/songMetadata-*.js` 里确有该 IP），
 而 `netease.ts` 的判定是 `extensionConfigured || !configuredApiBase` —— 两者都不满足，
 **桥分支永远不会进**，手机只会去连那个内网地址。
@@ -123,12 +120,31 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
 `QISHUI=`（不提供）/ `LYRIC_PROXY=`（见下）。
 验证：`npm run build:android` 后 `dist/` 内**已无该内网 IP**，注入值逐项核对正确。
 
-### C. 待决：`VITE_LYRIC_PROXY_BASE`
-它服务 QQ/酷狗/**AMLL** 的歌词与封面（这些 provider 直接 fetch，不走 transport 桥）。
-参考实现是**直接删掉 `lyricProxyBase.ts`**，改为依赖原生 fetch shim（OkHttp 不受 CORS 限制）。
-本项目照做需要：把歌词/封面涉及的 CDN 域名补进 `API_HOSTS`，并让 `buildLyricProxyUrl`
-在原生端跳过代理——属独立改动，**本轮未做**，暂留空以免把内网地址打进发布包。
-（已知副作用：留空后 QQ/酷狗歌词封面会 404；酷狗的走桥路径不受影响，因 `kugou.com` 已在白名单内。）
+### C. 内网地址已彻底移除（"取消内网"）
+`.env` 原先被 git 跟踪，且指向开发机内网：
+```
+VITE_NETEASE_API_BASE / VITE_QQ_API_BASE / VITE_LYRIC_PROXY_BASE  ->  开发机内网地址
+```
+`vite build` 会把它烤进 `dist`，Android 上既连不通、又把内网拓扑带进发布包。现已按下述方式根除：
+
+1. **`.env` 取消跟踪并清空**：`git rm --cached .env`；内容改为全空的本地模板。
+   `.gitignore` 从「只忽略 `.env*.local`」改为忽略 `.env`，并显式保留
+   `.env.example` / `.env.android`（`!.env.example` / `!.env.android`）。
+2. **封面与歌词改走原生层**：`API_HOSTS` 补入 `y.gtimg.cn`、`kgimg.com`、
+   `amll-ttml-db.stevexmh.net`，由 OkHttp 取二进制/JSON，不再依赖任何代理。
+3. **`buildLyricProxyUrl` 在原生壳内直接返回原 URL**：不再拼 `/api/lyric-proxy`
+   （Capacitor 下会落到本地资源服务器 → 404），也不需要外部代理地址。
+   判定条件与 `installAudioNativeCore` 的启用条件保持一致，避免「跳过代理但 shim 没装」。
+4. **附带的测试收益**：那串被跟踪的 `.env` 一直在污染测试——`coverCache`(×2) 与
+   `amllDbProvider` 三个用例原本失败，正是因为 `VITE_LYRIC_PROXY_BASE` 让 URL 变成了
+   内网地址、而非预期的同源相对路径。清掉内网后**这三个自动转绿**。
+   当前基线：`2510 passed / 8 failed`，失败集合全部落在原基线内（未修复的那几个：
+   appDatabaseMigration×2、localMusicService×2、onlineProviderAccountStore、tuningRegistry），
+   其中 `themeSyncRegistry×2` 是既有的时序 flaky（单独跑 3/3 通过）。
+   → **净效果：修复 3 个既有失败，零新增。**
+5. 新增 `test/unit/services/lyricProxyBase.test.ts`（5）：壳内直连原始 URL、壳外行为不变、
+   白名单覆盖 `y.gtimg.cn` / `kgimg.com` / AMLL。（`isBridgedApiUrl` 内用 `location.href`，
+   node 环境需补 `location` 桩，否则会走 catch 一律 false，变成假阴性。）
 
 - JDK：`/usr/lib/jvm/java-21-openjdk-arm64`（apt 装的 openjdk-21-jdk-headless）
 - Android SDK：`/opt/android-sdk`（platform-36 + build-tools 36.0.0 + cmdline-tools latest）

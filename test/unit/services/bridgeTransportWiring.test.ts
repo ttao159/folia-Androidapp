@@ -61,7 +61,7 @@ beforeAll(async () => {
     const win = makeWindow();
     (globalThis as any).window = win;
     // 浏览器的裸 `fetch` 就是 window.fetch；node 里两者分离，而 netease.ts 用的是裸 fetch。
-    // 不把全局 fetch 也指过去，被测代码会打到真实网络（初版就是因此连到了 <redacted-host>）。
+    // 不把全局 fetch 也指过去，被测代码会打到真实网络（初版就是因此连到了真实外部后端）。
     (globalThis as any).fetch = win.fetch;
     // installer 会用 shim 覆盖 window.fetch，其内部仍调用原始的 fetch；
     // 测试要断言「未走桥」，就必须持有那个原始 mock 的引用。
@@ -78,11 +78,12 @@ beforeAll(async () => {
         length: 0,
     };
 
-    // 打开桥：三个 provider 的 base 都指向 'extension'。
-    // 注意：仓库里有真实 .env（VITE_NETEASE_API_BASE=http://<redacted-host>:xxxxx），vitest 会自动加载它，
-    // 于是 import.meta.env 里的值优先于 process.env；必须用 vi.stubEnv 同时覆盖两者，
-    // 否则网易云会走真实外部后端（本测试初版就是这样打到了 <redacted-host> 上）。
-    vi.stubEnv('VITE_NETEASE_API_BASE', 'extension');
+    // 打开桥：QQ / 酷狗的 base 设为 'extension'。
+    // 注意：仓库的 .env 若给这些 provider 配了外部地址（历史上确有一串内网地址），
+    // vitest 会自动加载它，于是 import.meta.env 的值优先于 process.env；
+    // 必须用 vi.stubEnv 同时覆盖两者，否则会真的打到外部后端。
+    // 网易云的 base 不在这里固定——它按用例用 process.env 控制，
+    // 以便分别覆盖「走桥」与「走外部后端」两条路径（见下方两个用例）。
     vi.stubEnv('VITE_KUGOU_API_BASE', 'extension');
     vi.stubEnv('VITE_QQ_API_BASE', 'extension');
 
@@ -136,25 +137,49 @@ describe('transport → 原生桥 接线', () => {
         expect(call.params).toMatchObject({ uin: '10001' });
     });
 
-    it('网易云：已配置外部 base 时优先走外部后端（桥不生效——这正是 Android 必须留空 base 的原因）', async () => {
-        const { neteaseApi } = await import('@/services/netease');
-        const fetchSpy = (globalThis as any).__originalFetch as ReturnType<typeof vi.fn>;
-        fetchSpy.mockClear();
-        fetchSpy.mockResolvedValueOnce(
-            new Response(JSON.stringify({ code: 200 }), {
-                status: 200,
-                headers: { 'content-type': 'application/json' },
-            }),
-        );
+    it('网易云：未配置 base 时走内置桥（这是 .env 取消内网地址后 Android 的默认状态）', async () => {
+        // 清掉外部 base：getConfiguredApiBase 在 test 模式回落到 process.env，
+        // 于是 extensionConfigured=false 且 !configuredApiBase=true → 进入桥分支。
+        const saved = process.env.VITE_NETEASE_API_BASE;
+        delete process.env.VITE_NETEASE_API_BASE;
+        try {
+            const { neteaseApi } = await import('@/services/netease');
+            await neteaseApi.createQr('net-e-key');
 
-        await neteaseApi.createQr('net-e-key');
+            const call = lastCall();
+            expect(call.provider).toBe('netease');
+            expect(call.operation).toBe('/login/qr/create');
+            expect(call.query).toMatchObject({ key: 'net-e-key' });
+        } finally {
+            if (saved === undefined) delete process.env.VITE_NETEASE_API_BASE;
+            else process.env.VITE_NETEASE_API_BASE = saved;
+        }
+    });
 
-        // 仓库的 .env 给网易云配了真实外部地址，import.meta.env 会优先命中它
-        // （vi.stubEnv 改不了 import.meta.env，那是 Vite 的编译期静态替换）。
-        // 于是这里钉住的就是「配置了 base 就不走桥」这条优先级——它正是
-        // Android 构建必须把 VITE_NETEASE_API_BASE 留空、否则内置桥永远不激活的原因。
-        expect(captured).toHaveLength(0);
-        expect(fetchSpy).toHaveBeenCalled();
+    it('网易云：配置了外部 base 时优先走外部后端，不进桥', async () => {
+        const saved = process.env.VITE_NETEASE_API_BASE;
+        process.env.VITE_NETEASE_API_BASE = 'http://backend.test:1234';
+        try {
+            const { neteaseApi } = await import('@/services/netease');
+            const fetchSpy = (globalThis as any).__originalFetch as ReturnType<typeof vi.fn>;
+            fetchSpy.mockClear();
+            fetchSpy.mockResolvedValueOnce(
+                new Response(JSON.stringify({ code: 200 }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                }),
+            );
+
+            await neteaseApi.createQr('net-e-key');
+
+            // 钉住这条优先级：配置了外部 base 就不走桥。
+            // 它正是 Android 构建必须把 VITE_NETEASE_API_BASE 留空、否则内置桥永远不激活的原因。
+            expect(captured).toHaveLength(0);
+            expect(fetchSpy).toHaveBeenCalled();
+        } finally {
+            if (saved === undefined) delete process.env.VITE_NETEASE_API_BASE;
+            else process.env.VITE_NETEASE_API_BASE = saved;
+        }
     });
 
     it('网易云：path 与 query 的形状由桥层契约覆盖（见 audioNativeBridge.test.ts）', async () => {
