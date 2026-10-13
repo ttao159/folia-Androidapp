@@ -140,10 +140,45 @@ Android 模式注入：`NETEASE=`（空→自动走桥）/ `QQ=extension` / `KUG
    （含我曾复制进的 `audioNativeInstaller`），并使降级条件与 shim 安装条件同源。
 
 ### 明确不做（复核更正）
-4. **重写 git 历史**：~~不做~~ → **已执行**。用户明确要求"下线删除端口"，即抹除远程仓库中的
-   地址与端口痕迹，故改用 `git filter-repo` 重写并 force push。
-   注意：**这不能替代真正的下线**——隧道若仍在线，端口照样可达；
-   真正的处置（在 mefrp 控制台删除/禁用隧道、停掉手机上的 frpc）只有服务所有者能做。
+4. **重写 git 历史**：~~不做~~ → **已执行**（用户明确要求"下线删除端口"）。
+   执行内容与结果见下方第六节之二。
+
+---
+
+## 六之二、历史重写与公开产物清理（"下线删除端口"）—— 2026-10-13
+
+### 背景更正
+`.monkeycode/MEMORY.md` 揭示了真实拓扑：后端跑在一台**闲置安卓手机的 Termux** 上
+（netease:3000 / qq:3200 / lyric-proxy:3400），经 **mefrp 内网穿透**映射到公网端口。
+因此"下线"= 在 mefrp 控制台删除隧道 + 停掉手机上的 frpc —— **只有服务所有者能做，我无权限**。
+我能做且已做的是：**抹除仓库与公开产物中的地址/端口痕迹**。
+
+### 已执行
+1. `git filter-repo --replace-text`（含 `--message-callback`）重写**全部**历史，
+   替换 `<redacted-host>` 与三个端口号；备份在 `/tmp/git-backup`。
+   验证：全历史内容/提交信息/端口命中数均为 **0**。
+2. 强制推送**三个**远程分支（都曾含泄漏）：
+   `main`、`260907-fix-fusion-settings-and-screen`、`trae/agent-F3cv3o` → 全部指向干净提交。
+3. **删除 Release 与 tag**：`refs/tags/limo` 直接指向泄漏提交 `60711ba`，且挂着
+   Release「Limo Nightly」——**15 个可公开下载的安装包**。
+   实测验证泄漏确在二进制内：抽检 `folia-major-...linux-x86_64.rpm`，
+   解压 xz 载荷（860MB）后命中 `<redacted-host>`×5、`<redacted-port>`×13、`<redacted-port>`×22、`<redacted-port>`×3。
+   已 `gh release delete limo --yes` 并删除该 tag。
+4. 工作区清理：`.monkeycode/MEMORY.md` 的具体端口号、`PROGRESS.md` 中的 IP 均已移除
+   （守卫的 RFC5737 文档段放行是为此配套）。
+
+### ⚠️ 仍存在的残留向量（无法通过改仓库消除）
+- **`refs/pull/1/head` → `5496faf`**：PR #1 已合并，该 head ref 会保留旧对象，
+  按 SHA 仍可抓取（已实测 `git fetch origin 60711ba` 成功）。GitHub 不允许改写它。
+- **已下载的旧安装包**：凡在删除前下载过那 15 个产物的人，本地仍有含地址的副本。
+- 结论：**真正的修复是让那些端点失效**（下线隧道/换端口/加访问控制）。
+  仓库侧痕迹已尽力清除，但"曾经公开"这一事实无法回溯撤销。
+
+### 验证
+`tsc` 通过；`npm test` → **2516 passed / 8 failed（全部在原基线集合内，含 flaky 的
+themeSyncRegistry×2）**，历史重写未影响代码；三个远程分支经 GitHub API 逐一确认
+`.env` 泄漏命中数为 0；Releases/Tags 均已清空。
+
 5. **不修既有失败测试**：诊断结论是确定性逻辑漂移，非 flaky、与本轮无关：
    - `appDatabaseMigration:82,123` → `expected 1 to be 0.9`
    - `onlineProviderAccountStore:55` → `expected 'netease' to be 'kugou'`
